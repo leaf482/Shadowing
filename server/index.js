@@ -52,6 +52,26 @@ const openDb = async () => {
     );
   `);
 
+  // Migration: add Figure 2 columns if missing
+  const newCols = [
+    ["avg_weekly_hours", "real"],
+    ["number_of_weeks", "real"],
+    ["current_experience", "integer default 0"],
+    ["status", "text"],
+    ["title", "text"],
+    ["type_compensated", "integer default 0"],
+    ["type_academic_credit", "integer default 0"],
+    ["type_volunteer", "integer default 0"],
+    ["description", "text"]
+  ];
+  for (const [col, def] of newCols) {
+    try {
+      await db.run(`alter table experiences add column ${col} ${def}`);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
   return db;
 };
 
@@ -176,6 +196,15 @@ const mapExperienceRow = (row) => ({
   dateStart: row.date_start,
   dateEnd: row.date_end,
   notes: row.notes,
+  description: row.description,
+  avgWeeklyHours: row.avg_weekly_hours,
+  numberOfWeeks: row.number_of_weeks,
+  currentExperience: !!row.current_experience,
+  status: row.status,
+  title: row.title,
+  typeCompensated: !!row.type_compensated,
+  typeAcademicCredit: !!row.type_academic_credit,
+  typeVolunteer: !!row.type_volunteer,
   createdAt: row.created_at,
 });
 
@@ -230,6 +259,15 @@ app.post("/api/experiences", async (req, res) => {
     dateStart,
     dateEnd,
     notes,
+    description,
+    avgWeeklyHours,
+    numberOfWeeks,
+    currentExperience,
+    status,
+    title,
+    typeCompensated,
+    typeAcademicCredit,
+    typeVolunteer,
   } = body;
 
   const hoursNum = Number(hours);
@@ -243,8 +281,9 @@ app.post("/api/experiences", async (req, res) => {
     `insert into experiences (
       id, experience_type, organization_name, address, address2, city, state_province, country, zip,
       supervisor_first_name, supervisor_last_name, supervisor_title, supervisor_phone, supervisor_email,
-      hours, date_start, date_end, notes
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      hours, date_start, date_end, notes, description, avg_weekly_hours, number_of_weeks,
+      current_experience, status, title, type_compensated, type_academic_credit, type_volunteer
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       experienceType ?? "dental_shadowing_in_person",
@@ -264,6 +303,15 @@ app.post("/api/experiences", async (req, res) => {
       dateStart ?? "",
       dateEnd ?? "",
       notes ?? "",
+      description ?? "",
+      avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
+      numberOfWeeks != null ? Number(numberOfWeeks) : null,
+      currentExperience ? 1 : 0,
+      status ?? "",
+      title ?? "",
+      typeCompensated ? 1 : 0,
+      typeAcademicCredit ? 1 : 0,
+      typeVolunteer ? 1 : 0,
     ]
   );
 
@@ -291,6 +339,15 @@ app.put("/api/experiences/:id", async (req, res) => {
     dateStart,
     dateEnd,
     notes,
+    description,
+    avgWeeklyHours,
+    numberOfWeeks,
+    currentExperience,
+    status,
+    title,
+    typeCompensated,
+    typeAcademicCredit,
+    typeVolunteer,
   } = body;
 
   const hoursNum = Number(hours);
@@ -303,7 +360,8 @@ app.put("/api/experiences/:id", async (req, res) => {
     `update experiences set
       experience_type = ?, organization_name = ?, address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
       supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?, supervisor_phone = ?, supervisor_email = ?,
-      hours = ?, date_start = ?, date_end = ?, notes = ?
+      hours = ?, date_start = ?, date_end = ?, notes = ?, description = ?, avg_weekly_hours = ?, number_of_weeks = ?,
+      current_experience = ?, status = ?, title = ?, type_compensated = ?, type_academic_credit = ?, type_volunteer = ?
     where id = ?`,
     [
       experienceType ?? "dental_shadowing_in_person",
@@ -323,6 +381,15 @@ app.put("/api/experiences/:id", async (req, res) => {
       dateStart ?? "",
       dateEnd ?? "",
       notes ?? "",
+      description ?? "",
+      avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
+      numberOfWeeks != null ? Number(numberOfWeeks) : null,
+      currentExperience ? 1 : 0,
+      status ?? "",
+      title ?? "",
+      typeCompensated ? 1 : 0,
+      typeAcademicCredit ? 1 : 0,
+      typeVolunteer ? 1 : 0,
       id,
     ]
   );

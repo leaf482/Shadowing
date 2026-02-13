@@ -667,6 +667,112 @@ textarea {
   color: #dc2626;
 }
 
+.form__radio-group,
+.form__checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.form__radio,
+.form__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.form__radio input,
+.form__checkbox input {
+  margin: 0;
+}
+
+.form__hours-calc {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.form__hours-calc label {
+  flex: 1;
+  min-width: 100px;
+}
+
+.form__calc-symbol {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #64748b;
+  padding-bottom: 0.5rem;
+}
+
+.form__hours-calc input[readonly] {
+  background: #f1f5f9;
+  cursor: default;
+}
+
+.tracker__clinic-group {
+  margin-bottom: 1.5rem;
+}
+
+.tracker__clinic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.tracker__clinic-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.tracker__clinic-hours {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.tracker__copy-block {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 0.75rem;
+  position: relative;
+}
+
+.tracker__copy-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.tracker__copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+}
+
+.tracker__copy-btn:hover {
+  background: #e0f2fe;
+}
+
+.tracker__item--nested {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+
 @media (max-width: 1200px) {
   .layout {
     grid-template-columns: 1fr;

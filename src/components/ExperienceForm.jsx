@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EXPERIENCE_TYPES, COUNTRIES, US_STATES } from "../data/experienceTypes.js";
+import { EXPERIENCE_TYPES, COUNTRIES, US_STATES, STATUS_OPTIONS } from "../data/experienceTypes.js";
 
 const EMPTY_FORM = {
   experienceType: "dental_shadowing_in_person",
@@ -16,30 +16,56 @@ const EMPTY_FORM = {
   supervisorPhone: "",
   supervisorEmail: "",
   hours: "",
+  avgWeeklyHours: "",
+  numberOfWeeks: "",
   dateStart: "",
   dateEnd: "",
+  currentExperience: false,
+  status: "",
+  title: "",
+  typeCompensated: false,
+  typeAcademicCredit: false,
+  typeVolunteer: false,
   notes: "",
+  description: "",
 };
 
 export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
-  const [formState, setFormState] = useState(
-    initialData
-      ? {
-          ...EMPTY_FORM,
-          ...initialData,
-          hours: String(initialData.hours ?? ""),
-        }
-      : EMPTY_FORM
-  );
+  const [formState, setFormState] = useState(() => {
+    if (!initialData) return EMPTY_FORM;
+    return {
+      ...EMPTY_FORM,
+      ...initialData,
+      hours: String(initialData.hours ?? ""),
+      avgWeeklyHours: initialData.avgWeeklyHours != null ? String(initialData.avgWeeklyHours) : "",
+      numberOfWeeks: initialData.numberOfWeeks != null ? String(initialData.numberOfWeeks) : "",
+      currentExperience: !!initialData.currentExperience,
+      typeCompensated: !!initialData.typeCompensated,
+      typeAcademicCredit: !!initialData.typeAcademicCredit,
+      typeVolunteer: !!initialData.typeVolunteer,
+    };
+  });
+
+  // Auto-calc Total Hours = Avg Weekly × Number of Weeks (only when both are filled)
+  const avgNum = parseFloat(formState.avgWeeklyHours);
+  const weeksNum = parseFloat(formState.numberOfWeeks);
+  const autoTotal =
+    !Number.isNaN(avgNum) && !Number.isNaN(weeksNum) && avgNum >= 0 && weeksNum >= 0
+      ? avgNum * weeksNum
+      : null;
+  const displayHours = autoTotal != null ? String(autoTotal) : formState.hours;
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormState((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormState((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const hoursNum = parseFloat(formState.hours);
+    const hoursNum = autoTotal != null ? autoTotal : parseFloat(formState.hours);
     if (Number.isNaN(hoursNum) || hoursNum < 0) {
       return;
     }
@@ -59,9 +85,18 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
       supervisorPhone: formState.supervisorPhone.trim(),
       supervisorEmail: formState.supervisorEmail.trim(),
       hours: hoursNum,
+      avgWeeklyHours: formState.avgWeeklyHours ? parseFloat(formState.avgWeeklyHours) : null,
+      numberOfWeeks: formState.numberOfWeeks ? parseFloat(formState.numberOfWeeks) : null,
       dateStart: formState.dateStart.trim(),
       dateEnd: formState.dateEnd.trim(),
+      currentExperience: formState.currentExperience,
+      status: formState.status.trim(),
+      title: formState.title.trim(),
+      typeCompensated: formState.typeCompensated,
+      typeAcademicCredit: formState.typeAcademicCredit,
+      typeVolunteer: formState.typeVolunteer,
       notes: formState.notes.trim(),
+      description: formState.description.trim(),
     });
 
     if (!initialData) setFormState(EMPTY_FORM);
@@ -225,47 +260,172 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
       </div>
 
       <div className="form__section">
-        <p className="eyebrow">Hours & dates</p>
-        <label>
-          Hours <span className="required">*</span>
-          <input
-            type="number"
-            name="hours"
-            value={formState.hours}
-            onChange={handleChange}
-            placeholder="0"
-            min="0"
-            step="0.5"
-            required
-          />
-        </label>
+        <p className="eyebrow">Experience Dates</p>
         <div className="form__row">
           <label>
-            Start date
+            Start date <span className="required">*</span>
             <input
               type="date"
               name="dateStart"
               value={formState.dateStart}
               onChange={handleChange}
+              required
             />
           </label>
           <label>
-            End date
+            End date {!formState.currentExperience && <span className="required">*</span>}
             <input
               type="date"
               name="dateEnd"
               value={formState.dateEnd}
               onChange={handleChange}
+              disabled={formState.currentExperience}
             />
           </label>
         </div>
         <label>
-          Notes
+          Current experience (ongoing)
+          <div className="form__radio-group">
+            <label className="form__radio">
+              <input
+                type="radio"
+                name="currentExperience"
+                checked={formState.currentExperience === true}
+                onChange={() => setFormState((p) => ({ ...p, currentExperience: true }))}
+              />
+              Yes
+            </label>
+            <label className="form__radio">
+              <input
+                type="radio"
+                name="currentExperience"
+                checked={formState.currentExperience === false}
+                onChange={() => setFormState((p) => ({ ...p, currentExperience: false }))}
+              />
+              No
+            </label>
+          </div>
+        </label>
+        <label>
+          Status
+          <select name="status" value={formState.status} onChange={handleChange}>
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value || "empty"} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="form__section">
+        <p className="eyebrow">Experience Details</p>
+        <label>
+          Title <span className="required">*</span>
+          <input
+            name="title"
+            value={formState.title}
+            onChange={handleChange}
+            placeholder="e.g. Dental Shadowing, Volunteer Assistant"
+            required
+          />
+        </label>
+        <label>
+          Type of recognition
+          <div className="form__checkboxes">
+            <label className="form__checkbox">
+              <input
+                type="checkbox"
+                name="typeCompensated"
+                checked={formState.typeCompensated}
+                onChange={handleChange}
+              />
+              Compensated
+            </label>
+            <label className="form__checkbox">
+              <input
+                type="checkbox"
+                name="typeAcademicCredit"
+                checked={formState.typeAcademicCredit}
+                onChange={handleChange}
+              />
+              Received Academic Credit
+            </label>
+            <label className="form__checkbox">
+              <input
+                type="checkbox"
+                name="typeVolunteer"
+                checked={formState.typeVolunteer}
+                onChange={handleChange}
+              />
+              Volunteer
+            </label>
+          </div>
+        </label>
+        <div className="form__hours-calc">
+          <label>
+            Average weekly hours
+            <input
+              type="number"
+              name="avgWeeklyHours"
+              value={formState.avgWeeklyHours}
+              onChange={handleChange}
+              placeholder="0"
+              min="0"
+              step="0.5"
+            />
+          </label>
+          <span className="form__calc-symbol">×</span>
+          <label>
+            Number of weeks
+            <input
+              type="number"
+              name="numberOfWeeks"
+              value={formState.numberOfWeeks}
+              onChange={handleChange}
+              placeholder="0"
+              min="0"
+              step="1"
+            />
+          </label>
+          <span className="form__calc-symbol">=</span>
+          <label>
+            Total hours <span className="required">*</span>
+            <input
+              type="number"
+              name="hours"
+              value={displayHours}
+              onChange={handleChange}
+              placeholder="0"
+              min="0"
+              step="0.5"
+              readOnly={autoTotal != null}
+              required
+            />
+          </label>
+        </div>
+        <p className="muted small">
+          {autoTotal != null
+            ? "Total auto-calculated. Copy this to your application."
+            : "Enter avg weekly hours and weeks, or type total directly."}
+        </p>
+        <label>
+          Description / Key responsibilities / Interactions to speak about
+          <textarea
+            name="description"
+            value={formState.description}
+            onChange={handleChange}
+            placeholder="What you did, key observations, interactions you can discuss in your application..."
+            rows={4}
+          />
+        </label>
+        <label>
+          Notes (internal)
           <textarea
             name="notes"
             value={formState.notes}
             onChange={handleChange}
-            placeholder="Additional notes"
+            placeholder="Quick notes for yourself"
             rows={2}
           />
         </label>

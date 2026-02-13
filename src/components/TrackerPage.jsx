@@ -200,19 +200,21 @@ export default function TrackerPage() {
       {loadError && <p className="muted small">{loadError}</p>}
       {isLoading ? (
         <p className="muted">Loading…</p>
+      ) : experiences.length === 0 ? (
+        <div className="card">
+          <p className="muted">No experiences yet. Add one above.</p>
+        </div>
       ) : (
-        <div className="tracker__list card">
-          <h3>Experiences ({experiences.length})</h3>
-          {experiences.length === 0 ? (
-            <p className="muted">No experiences yet. Add one above.</p>
-          ) : (
+        <>
+          <div className="tracker__list card">
+            <h3>All experiences ({experiences.length})</h3>
             <ul className="tracker__items">
               {experiences.map((e) => (
                 <li key={e.id} className="tracker__item">
                   <div className="tracker__item-main">
                     <strong>{e.organizationName}</strong>
                     <span className="tracker__item-type">
-                      {TYPE_LABELS[e.experienceType] || e.experienceType}
+                      {e.title || TYPE_LABELS[e.experienceType] || e.experienceType}
                     </span>
                     <span className="tracker__item-hours">{e.hours}h</span>
                   </div>
@@ -246,8 +248,87 @@ export default function TrackerPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </div>
+
+          <div className="card">
+            <h3>Tracking by clinic</h3>
+            <p className="muted small">
+              Copy notes and description to paste into your dental school application.
+            </p>
+            {Object.entries(totals.byClinic).map(([clinicName, hrs]) => {
+              const clinicExperiences = experiences.filter(
+                (e) => e.organizationName === clinicName
+              );
+              const descriptions = clinicExperiences
+                .filter((e) => e.description || e.notes)
+                .map((e) => {
+                  const parts = [];
+                  if (e.title) parts.push(`Title: ${e.title}`);
+                  if (e.hours) parts.push(`Hours: ${e.hours}`);
+                  if (e.description) parts.push(e.description);
+                  if (e.notes) parts.push(`Notes: ${e.notes}`);
+                  return parts.join("\n\n");
+                })
+                .join("\n\n---\n\n");
+              const copyText =
+                descriptions ||
+                `No description or notes yet. Edit experiences to add key responsibilities and interactions.`;
+
+              return (
+                <div key={clinicName} className="tracker__clinic-group">
+                  <div className="tracker__clinic-header">
+                    <span className="tracker__clinic-name">{clinicName}</span>
+                    <span className="tracker__clinic-hours">
+                      {hrs.toFixed(1)}h total
+                    </span>
+                  </div>
+                  {clinicExperiences.map((e) => (
+                    <div key={e.id} className="tracker__item tracker__item--nested">
+                      <div className="tracker__item-main">
+                        <span>{e.title || TYPE_LABELS[e.experienceType]}</span>
+                        <span className="tracker__item-hours">{e.hours}h</span>
+                      </div>
+                      {(e.description || e.notes) && (
+                        <div className="tracker__copy-block">
+                          <button
+                            type="button"
+                            className="tracker__copy-btn"
+                            onClick={() =>
+                              navigator.clipboard?.writeText(
+                                [e.description, e.notes].filter(Boolean).join("\n\n")
+                              )
+                            }
+                          >
+                            Copy
+                          </button>
+                          <pre>{[e.description, e.notes].filter(Boolean).join("\n\n")}</pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {clinicExperiences.some((e) => e.description || e.notes) ? (
+                    <div className="tracker__copy-block">
+                      <button
+                        type="button"
+                        className="tracker__copy-btn"
+                        onClick={() =>
+                          navigator.clipboard?.writeText(copyText)
+                        }
+                      >
+                        Copy all for {clinicName}
+                      </button>
+                      <pre>{copyText}</pre>
+                    </div>
+                  ) : (
+                    <p className="muted small">
+                      Add description and notes when editing to copy into your application.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

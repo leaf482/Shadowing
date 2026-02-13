@@ -19,6 +19,13 @@ export const COUNTRIES = [
   "Other",
 ];
 
+export const STATUS_OPTIONS = [
+  { value: "", label: "Status" },
+  { value: "completed", label: "Completed" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "planned", label: "Planned" },
+];
+
 export const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
   "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
