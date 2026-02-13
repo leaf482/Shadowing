@@ -6,6 +6,7 @@ import MapPanel from "./components/MapPanel.jsx";
 import ClinicTrackerPanel from "./components/ClinicTrackerPanel.jsx";
 import ClinicsPage from "./components/ClinicsPage.jsx";
 import GuidePage from "./components/GuidePage.jsx";
+import TrackerPage from "./components/TrackerPage.jsx";
 
 const STATUS_LABELS = {
   available: "Shadowing available",
@@ -121,7 +122,9 @@ export default function App() {
     <div className="layout">
       <SideNav activePage={activePage} onNavigate={handleNavigate} />
       <div className="content">
-        {activePage === "clinics" ? (
+        {activePage === "tracker" ? (
+          <TrackerPage />
+        ) : activePage === "clinics" ? (
           <ClinicsPage
             clinics={clinics}
             statusOptions={statusOptions}

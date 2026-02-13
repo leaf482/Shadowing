@@ -28,6 +28,28 @@ const openDb = async () => {
       notes text,
       last_verified_at text
     );
+
+    create table if not exists experiences (
+      id text primary key,
+      experience_type text not null,
+      organization_name text not null,
+      address text,
+      address2 text,
+      city text,
+      state_province text,
+      country text,
+      zip text,
+      supervisor_first_name text,
+      supervisor_last_name text,
+      supervisor_title text,
+      supervisor_phone text,
+      supervisor_email text,
+      hours real not null default 0,
+      date_start text,
+      date_end text,
+      notes text,
+      created_at text default (datetime('now'))
+    );
   `);
 
   return db;
@@ -133,6 +155,190 @@ app.put("/api/clinics/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Experiences (Dental Shadowing Tracker) ---
+
+const mapExperienceRow = (row) => ({
+  id: row.id,
+  experienceType: row.experience_type,
+  organizationName: row.organization_name,
+  address: row.address,
+  address2: row.address2,
+  city: row.city,
+  stateProvince: row.state_province,
+  country: row.country,
+  zip: row.zip,
+  supervisorFirstName: row.supervisor_first_name,
+  supervisorLastName: row.supervisor_last_name,
+  supervisorTitle: row.supervisor_title,
+  supervisorPhone: row.supervisor_phone,
+  supervisorEmail: row.supervisor_email,
+  hours: row.hours,
+  dateStart: row.date_start,
+  dateEnd: row.date_end,
+  notes: row.notes,
+  createdAt: row.created_at,
+});
+
+app.get("/api/experiences", async (req, res) => {
+  const { clinic, supervisor, phone, email, type } = req.query;
+  let sql = "select * from experiences where 1=1";
+  const params = [];
+
+  if (clinic) {
+    sql += " and organization_name like ?";
+    params.push(`%${clinic}%`);
+  }
+  if (supervisor) {
+    sql += " and (supervisor_first_name like ? or supervisor_last_name like ?)";
+    params.push(`%${supervisor}%`, `%${supervisor}%`);
+  }
+  if (phone) {
+    sql += " and supervisor_phone like ?";
+    params.push(`%${phone}%`);
+  }
+  if (email) {
+    sql += " and supervisor_email like ?";
+    params.push(`%${email}%`);
+  }
+  if (type) {
+    sql += " and experience_type = ?";
+    params.push(type);
+  }
+
+  sql += " order by date_start desc, created_at desc";
+  const rows = await db.all(sql, params);
+  res.json(rows.map(mapExperienceRow));
+});
+
+app.post("/api/experiences", async (req, res) => {
+  const body = req.body ?? {};
+  const {
+    experienceType,
+    organizationName,
+    address,
+    address2,
+    city,
+    stateProvince,
+    country,
+    zip,
+    supervisorFirstName,
+    supervisorLastName,
+    supervisorTitle,
+    supervisorPhone,
+    supervisorEmail,
+    hours,
+    dateStart,
+    dateEnd,
+    notes,
+  } = body;
+
+  const hoursNum = Number(hours);
+  if (!organizationName || Number.isNaN(hoursNum) || hoursNum < 0) {
+    res.status(400).json({ error: "Organization name and valid hours are required." });
+    return;
+  }
+
+  const id = randomUUID();
+  await db.run(
+    `insert into experiences (
+      id, experience_type, organization_name, address, address2, city, state_province, country, zip,
+      supervisor_first_name, supervisor_last_name, supervisor_title, supervisor_phone, supervisor_email,
+      hours, date_start, date_end, notes
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      experienceType ?? "dental_shadowing_in_person",
+      organizationName,
+      address ?? "",
+      address2 ?? "",
+      city ?? "",
+      stateProvince ?? "",
+      country ?? "",
+      zip ?? "",
+      supervisorFirstName ?? "",
+      supervisorLastName ?? "",
+      supervisorTitle ?? "",
+      supervisorPhone ?? "",
+      supervisorEmail ?? "",
+      hoursNum,
+      dateStart ?? "",
+      dateEnd ?? "",
+      notes ?? "",
+    ]
+  );
+
+  res.status(201).json({ id });
+});
+
+app.put("/api/experiences/:id", async (req, res) => {
+  const { id } = req.params;
+  const body = req.body ?? {};
+  const {
+    experienceType,
+    organizationName,
+    address,
+    address2,
+    city,
+    stateProvince,
+    country,
+    zip,
+    supervisorFirstName,
+    supervisorLastName,
+    supervisorTitle,
+    supervisorPhone,
+    supervisorEmail,
+    hours,
+    dateStart,
+    dateEnd,
+    notes,
+  } = body;
+
+  const hoursNum = Number(hours);
+  if (!id || !organizationName || Number.isNaN(hoursNum) || hoursNum < 0) {
+    res.status(400).json({ error: "ID, organization name and valid hours are required." });
+    return;
+  }
+
+  await db.run(
+    `update experiences set
+      experience_type = ?, organization_name = ?, address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
+      supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?, supervisor_phone = ?, supervisor_email = ?,
+      hours = ?, date_start = ?, date_end = ?, notes = ?
+    where id = ?`,
+    [
+      experienceType ?? "dental_shadowing_in_person",
+      organizationName,
+      address ?? "",
+      address2 ?? "",
+      city ?? "",
+      stateProvince ?? "",
+      country ?? "",
+      zip ?? "",
+      supervisorFirstName ?? "",
+      supervisorLastName ?? "",
+      supervisorTitle ?? "",
+      supervisorPhone ?? "",
+      supervisorEmail ?? "",
+      hoursNum,
+      dateStart ?? "",
+      dateEnd ?? "",
+      notes ?? "",
+      id,
+    ]
+  );
+
+  res.json({ ok: true });
+});
+
+app.delete("/api/experiences/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: "ID required." });
+    return;
+  }
+  await db.run("delete from experiences where id = ?", [id]);
+  res.json({ ok: true });
+});
 
 app.listen(PORT, () => {
   console.log(`SQLite API listening on http://localhost:${PORT}`);
