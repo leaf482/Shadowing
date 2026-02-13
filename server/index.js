@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 
-const PORT = process.env.PORT || 5174;
+const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.SQLITE_PATH || "./server/shadowing.db";
 
 const app = express();
