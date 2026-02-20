@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { id: "guidelines", label: "Guidelines" }
 ];
 
-export default function SideNav({ activePage, onNavigate }) {
+export default function SideNav({ activePage, onNavigate, onLogout }) {
   return (
     <aside className="nav">
       <div className="nav__brand">
@@ -33,8 +33,17 @@ export default function SideNav({ activePage, onNavigate }) {
         <div className="nav__footer card">
           <p className="label">Quick tip</p>
           <p className="muted small">
-            Use the Clinics to view clinics anb Dashboard to add new clinics.
+            Use the Clinics to view clinics and Dashboard to add new clinics.
           </p>
+          {onLogout ? (
+            <button
+              type="button"
+              className="nav__logout"
+              onClick={onLogout}
+            >
+              Sign out
+            </button>
+          ) : null}
         </div>
       </div>
     </aside>
