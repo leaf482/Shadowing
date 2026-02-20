@@ -1,3 +1,17 @@
+function isLocked(clinic) {
+  if (!clinic?.lockExpiresAt) return false;
+  return new Date(clinic.lockExpiresAt) > new Date();
+}
+
+function formatLockExpires(lockExpiresAt) {
+  if (!lockExpiresAt) return "";
+  return new Date(lockExpiresAt).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
+
 export default function ClinicTrackerPanel({ clinic, statusLabels }) {
   if (!clinic) {
     return (
@@ -13,6 +27,16 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
     );
   }
 
+  const locked = isLocked(clinic);
+  const statusClass =
+    clinic.shadowingStatus === "available" && locked
+      ? "status-pill--locked"
+      : clinic.shadowingStatus;
+  const statusLabel =
+    clinic.shadowingStatus === "available" && locked
+      ? `Temporarily Unavailable (until ${formatLockExpires(clinic.lockExpiresAt)})`
+      : statusLabels[clinic.shadowingStatus];
+
   return (
     <div className="info-panel">
       <div className="card">
@@ -22,8 +46,8 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
             <h2>{clinic.name}</h2>
             <p className="muted">{clinic.address}</p>
           </div>
-          <span className={`status-pill status-pill--${clinic.shadowingStatus}`}>
-            {statusLabels[clinic.shadowingStatus]}
+          <span className={`status-pill status-pill--${statusClass}`}>
+            {statusLabel}
           </span>
         </div>
 

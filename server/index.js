@@ -5,6 +5,7 @@ import sqlite3 from "sqlite3";
 
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.SQLITE_PATH || "./server/shadowing.db";
+const COOLDOWN_DAYS = Math.min(21, Math.max(14, parseInt(process.env.COOLDOWN_DAYS, 10) || 14));
 
 const app = express();
 app.use(express.json());
@@ -27,6 +28,13 @@ const openDb = async () => {
       shadowing_status text not null default 'mixed',
       notes text,
       last_verified_at text
+    );
+
+    create table if not exists shadowing_requests (
+      id text primary key,
+      clinic_id text not null,
+      created_at text default (datetime('now')),
+      foreign key (clinic_id) references clinics(id)
     );
 
     create table if not exists experiences (
@@ -72,6 +80,19 @@ const openDb = async () => {
     }
   }
 
+  // Migration: clinic lock columns for shadowing request cooldown
+  const clinicLockCols = [
+    ["lock_expires_at", "text"],
+    ["locked_by_request_id", "text"]
+  ];
+  for (const [col, def] of clinicLockCols) {
+    try {
+      await db.run(`alter table clinics add column ${col} ${def}`);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
   return db;
 };
 
@@ -85,7 +106,9 @@ const mapClinicRow = (row) => ({
   zip: row.zip,
   shadowingStatus: row.shadowing_status,
   notes: row.notes,
-  lastVerifiedAt: row.last_verified_at
+  lastVerifiedAt: row.last_verified_at,
+  lockExpiresAt: row.lock_expires_at ?? null,
+  lockedByRequestId: row.locked_by_request_id ?? null
 });
 
 
@@ -173,6 +196,66 @@ app.put("/api/clinics/:id", async (req, res) => {
   );
 
   res.json({ ok: true });
+});
+
+// --- Shadowing request (first-come lock + cooldown) ---
+
+app.post("/api/clinics/:id/request", async (req, res) => {
+  const { id: clinicId } = req.params;
+  if (!clinicId) {
+    res.status(400).json({ error: "Clinic ID required." });
+    return;
+  }
+
+  const clinic = await db.get("select * from clinics where id = ?", [clinicId]);
+  if (!clinic) {
+    res.status(404).json({ error: "Clinic not found." });
+    return;
+  }
+
+  if (clinic.shadowing_status !== "available") {
+    res.status(400).json({
+      error: "This clinic is not available for shadowing requests."
+    });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const lockExpiresAt = clinic.lock_expires_at;
+  if (lockExpiresAt && lockExpiresAt > now) {
+    const untilDate = new Date(lockExpiresAt).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+    res.status(409).json({
+      error: `This clinic is temporarily unavailable until ${untilDate}.`,
+      lockExpiresAt
+    });
+    return;
+  }
+
+  const requestId = randomUUID();
+  await db.run(
+    "insert into shadowing_requests (id, clinic_id) values (?, ?)",
+    [requestId, clinicId]
+  );
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + COOLDOWN_DAYS);
+  const expiresAtIso = expiresAt.toISOString();
+
+  await db.run(
+    "update clinics set lock_expires_at = ?, locked_by_request_id = ? where id = ?",
+    [expiresAtIso, requestId, clinicId]
+  );
+
+  const updated = await db.get("select * from clinics where id = ?", [clinicId]);
+  res.status(201).json({
+    requestId,
+    lockExpiresAt: expiresAtIso,
+    clinic: mapClinicRow(updated)
+  });
 });
 
 // --- Experiences (Dental Shadowing Tracker) ---

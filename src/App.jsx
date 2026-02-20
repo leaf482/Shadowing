@@ -134,6 +134,7 @@ export default function App() {
             setStatusFilter={setStatusFilter}
             milesFilter={milesFilter}
             setMilesFilter={setMilesFilter}
+            onRefreshClinics={refreshData}
           />
         ) : activePage === "guidelines" ? (
           <GuidePage />

@@ -462,6 +462,10 @@ textarea {
   background: #3b82f6;
 }
 
+.legend-dot--locked {
+  background: #94a3b8;
+}
+
 .map__body {
   flex: 1;
   border-radius: 16px;
@@ -513,6 +517,74 @@ textarea {
 .status-pill--unavailable {
   background: rgba(231, 76, 60, 0.25);
   color: #991b1b;
+}
+
+.status-pill--locked {
+  background: rgba(148, 163, 184, 0.3);
+  color: #475569;
+}
+
+.directory__card-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.request-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  background: rgba(231, 76, 60, 0.08);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+
+.modal-overlay .modal {
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.button {
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button--primary {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.button--secondary {
+  background: #e2e8f0;
+  color: #1f2937;
+}
+
+.button--small {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
 }
 
 .moderation {

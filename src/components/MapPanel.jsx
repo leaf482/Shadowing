@@ -12,8 +12,21 @@ const STATUS_COLORS = {
   available: "#2ecc71",
   mixed: "#f1c40f",
   unavailable: "#e74c3c",
-  pending: "#3b82f6"
+  pending: "#3b82f6",
+  locked: "#94a3b8"
 };
+
+function isLocked(clinic) {
+  if (!clinic?.lockExpiresAt) return false;
+  return new Date(clinic.lockExpiresAt) > new Date();
+}
+
+function getMarkerColor(clinic) {
+  if (clinic.shadowingStatus === "available" && isLocked(clinic)) {
+    return STATUS_COLORS.locked;
+  }
+  return STATUS_COLORS[clinic.shadowingStatus] ?? STATUS_COLORS.mixed;
+}
 
 const flyToClinic = (map, clinic) => {
   map.setView([clinic.lat, clinic.lng], 13, { animate: true });
@@ -52,8 +65,8 @@ function ClinicMarkers({ clinics, selectedClinicId, onSelectClinic }) {
           center={[clinic.lat, clinic.lng]}
           radius={clinic.id === selectedClinicId ? 10 : 7}
           pathOptions={{
-            color: STATUS_COLORS[clinic.shadowingStatus],
-            fillColor: STATUS_COLORS[clinic.shadowingStatus],
+            color: getMarkerColor(clinic),
+            fillColor: getMarkerColor(clinic),
             fillOpacity: 0.85
           }}
           eventHandlers={{
@@ -87,6 +100,10 @@ export default function MapPanel({ clinics, selectedClinicId, onSelectClinic }) 
           <span className="legend-item">
             <span className="legend-dot legend-dot--available" />
             Available
+          </span>
+          <span className="legend-item">
+            <span className="legend-dot legend-dot--locked" />
+            Temporarily unavailable
           </span>
           <span className="legend-item">
             <span className="legend-dot legend-dot--mixed" />
