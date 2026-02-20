@@ -193,7 +193,7 @@ export default function ClinicsPage({
     useNearby
   ]);
 
-  const handleSendRequest = async (clinic) => {
+  const handleReserveSlot = async (clinic) => {
     setRequestError("");
     setLoadingRequestId(clinic.id);
     try {
@@ -377,11 +377,11 @@ export default function ClinicsPage({
                     type="button"
                     className="button button--primary button--small"
                     disabled={loadingRequestId === clinic.id}
-                    onClick={() => handleSendRequest(clinic)}
+                    onClick={() => handleReserveSlot(clinic)}
                   >
                     {loadingRequestId === clinic.id
-                      ? "Sending…"
-                      : "Send shadowing request"}
+                      ? "Reserving…"
+                      : "Reserve slot"}
                   </button>
                 ) : null}
               </div>
