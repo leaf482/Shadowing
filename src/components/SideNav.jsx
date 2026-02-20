@@ -35,16 +35,17 @@ export default function SideNav({ activePage, onNavigate, onLogout }) {
           <p className="muted small">
             Use the Clinics to view clinics and Dashboard to add new clinics.
           </p>
-          {onLogout ? (
-            <button
-              type="button"
-              className="nav__logout"
-              onClick={onLogout}
-            >
-              Sign out
-            </button>
-          ) : null}
         </div>
+
+        {onLogout ? (
+          <button
+            type="button"
+            className="nav__logout"
+            onClick={onLogout}
+          >
+            Sign out
+          </button>
+        ) : null}
       </div>
     </aside>
   );
