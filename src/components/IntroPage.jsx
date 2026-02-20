@@ -9,7 +9,7 @@ export default function IntroPage({ onGetStarted }) {
           Find dental shadowing opportunities in the UW Tacoma region.
         </p>
         <p className="intro__muted">
-          Verified clinics, one request at a time. For UW students only.
+          Verified clinics, one request at a time.
         </p>
         <button
           type="button"
