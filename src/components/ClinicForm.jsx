@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
 
 const EMPTY_FORM = {
   name: "",
@@ -7,6 +8,7 @@ const EMPTY_FORM = {
   lat: "",
   lng: "",
   shadowingStatus: "mixed",
+  primarySpecialty: "gp",
   notes: "",
   zip: ""
 };
@@ -84,6 +86,7 @@ export default function ClinicForm({
       lng: lngValue,
       zip: formState.zip.trim(),
       shadowingStatus: formState.shadowingStatus,
+      primarySpecialty: formState.primarySpecialty,
       notes: formState.notes.trim()
     };
 
@@ -108,6 +111,21 @@ export default function ClinicForm({
             placeholder="Tacoma Smiles Dental"
             required
           />
+        </label>
+        <label>
+          Primary specialty
+          <select
+            name="primarySpecialty"
+            value={formState.primarySpecialty}
+            onChange={handleChange}
+            required
+          >
+            {PRIMARY_SPECIALTIES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Shadowing status

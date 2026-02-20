@@ -1,3 +1,5 @@
+import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
+
 function isLocked(clinic) {
   if (!clinic?.lockExpiresAt) return false;
   return new Date(clinic.lockExpiresAt) > new Date();
@@ -37,6 +39,10 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
       ? `Temporarily Unavailable (until ${formatLockExpires(clinic.lockExpiresAt)})`
       : statusLabels[clinic.shadowingStatus];
 
+  const specialtyLabel =
+    PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)
+      ?.label ?? clinic.primarySpecialty;
+
   return (
     <div className="info-panel">
       <div className="card">
@@ -52,6 +58,10 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
         </div>
 
         <div className="info-grid">
+          <div>
+            <p className="label">Primary specialty</p>
+            <p>{specialtyLabel}</p>
+          </div>
           <div>
             <p className="label">Phone</p>
             <p>{clinic.phone || "Not provided"}</p>

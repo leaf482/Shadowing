@@ -1,0 +1,18 @@
+/** Primary specialty options. Every clinic has exactly one. */
+export const PRIMARY_SPECIALTIES = [
+  { value: "gp", label: "General Practice (GP)" },
+  { value: "endodontics", label: "Endodontics" },
+  { value: "omfs", label: "Oral and Maxillofacial Surgery (OMFS)" },
+  { value: "periodontics", label: "Periodontics" },
+  { value: "orthodontics", label: "Orthodontics" },
+  { value: "pediatric_dentistry", label: "Pediatric Dentistry" },
+  { value: "prosthodontics", label: "Prosthodontics" },
+  { value: "oral_medicine", label: "Oral Medicine" },
+  { value: "public_health", label: "Public Health" }
+];
+
+/** For search filter: All (default) + primary specialties */
+export const PRIMARY_SPECIALTY_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  ...PRIMARY_SPECIALTIES
+];

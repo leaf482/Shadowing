@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
+import { PRIMARY_SPECIALTY_FILTER_OPTIONS } from "./data/specialties.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import MapPanel from "./components/MapPanel.jsx";
@@ -48,6 +49,7 @@ export default function App() {
   };
 
   const [zipFilter, setZipFilter] = useState("");
+  const [specialtyFilter, setSpecialtyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [milesFilter, setMilesFilter] = useState("10");
 
@@ -128,6 +130,9 @@ export default function App() {
           <ClinicsPage
             clinics={clinics}
             statusOptions={statusOptions}
+            specialtyFilterOptions={PRIMARY_SPECIALTY_FILTER_OPTIONS}
+            specialtyFilter={specialtyFilter}
+            setSpecialtyFilter={setSpecialtyFilter}
             zipFilter={zipFilter}
             setZipFilter={setZipFilter}
             statusFilter={statusFilter}

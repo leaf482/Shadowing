@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "../data/clinics.js";
+import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
 
 const MILES_OPTIONS = [5, 10, 15, 25];
 
@@ -39,6 +40,9 @@ function formatLockExpires(lockExpiresAt) {
 export default function ClinicsPage({
   clinics,
   statusOptions,
+  specialtyFilterOptions,
+  specialtyFilter,
+  setSpecialtyFilter,
   zipFilter,
   setZipFilter,
   statusFilter,
@@ -107,6 +111,8 @@ export default function ClinicsPage({
 
   const filteredClinics = useMemo(() => {
     return clinics.filter((clinic) => {
+      const matchesSpecialty =
+        specialtyFilter === "all" || clinic.primarySpecialty === specialtyFilter;
       const matchesStatus =
         statusFilter === "all" || clinic.shadowingStatus === statusFilter;
       const matchesZip =
@@ -116,9 +122,9 @@ export default function ClinicsPage({
         milesFilter === "all"
           ? true
           : distanceInMiles(centerCoords, clinic) <= Number(milesFilter);
-      return matchesStatus && matchesZip && matchesRadius;
+      return matchesSpecialty && matchesStatus && matchesZip && matchesRadius;
     });
-  }, [clinics, statusFilter, zipFilter, milesFilter, centerCoords]);
+  }, [clinics, specialtyFilter, statusFilter, zipFilter, milesFilter, centerCoords]);
 
   const handleSendRequest = async (clinic) => {
     setRequestError("");
@@ -155,12 +161,25 @@ export default function ClinicsPage({
           <p className="eyebrow">Clinic directory</p>
           <h1>Search clinics</h1>
           <p className="muted">
-            Filter clinics ZIP and status.
+            Browse by primary specialty, then filter by ZIP and status.
           </p>
         </div>
       </header>
 
       <div className="directory__filters card">
+        <label>
+          Primary specialty
+          <select
+            value={specialtyFilter}
+            onChange={(event) => setSpecialtyFilter(event.target.value)}
+          >
+            {specialtyFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           ZIP code
           <input
@@ -229,10 +248,14 @@ export default function ClinicsPage({
             clinic.shadowingStatus === "available" && locked
               ? "status-pill--locked"
               : clinic.shadowingStatus;
+          const specialtyLabel =
+            PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)
+              ?.label ?? clinic.primarySpecialty;
           return (
             <article key={clinic.id} className="card directory__card">
               <div>
                 <h3>{clinic.name}</h3>
+                <p className="muted small specialty-label">{specialtyLabel}</p>
                 <p className="muted">{clinic.address}</p>
                 <p className="muted small">ZIP {clinic.zip || "Not listed"}</p>
               </div>

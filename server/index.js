@@ -93,6 +93,13 @@ const openDb = async () => {
     }
   }
 
+  // Migration: primary specialty (required per clinic)
+  try {
+    await db.run("alter table clinics add column primary_specialty text default 'gp'");
+  } catch (e) {
+    if (!e.message?.includes("duplicate column")) throw e;
+  }
+
   return db;
 };
 
@@ -105,6 +112,7 @@ const mapClinicRow = (row) => ({
   lng: row.lng,
   zip: row.zip,
   shadowingStatus: row.shadowing_status,
+  primarySpecialty: row.primary_specialty ?? "gp",
   notes: row.notes,
   lastVerifiedAt: row.last_verified_at,
   lockExpiresAt: row.lock_expires_at ?? null,
@@ -128,6 +136,7 @@ app.post("/api/clinics", async (req, res) => {
     lng,
     zip,
     shadowingStatus,
+    primarySpecialty,
     notes
   } = req.body ?? {};
 
@@ -139,8 +148,8 @@ app.post("/api/clinics", async (req, res) => {
   const id = randomUUID();
   const lastVerifiedAt = new Date().toISOString().slice(0, 10);
   await db.run(
-    `insert into clinics (id, name, address, phone, lat, lng, zip, shadowing_status, notes, last_verified_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into clinics (id, name, address, phone, lat, lng, zip, shadowing_status, primary_specialty, notes, last_verified_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       name,
@@ -150,6 +159,7 @@ app.post("/api/clinics", async (req, res) => {
       lng,
       zip ?? "",
       shadowingStatus ?? "mixed",
+      primarySpecialty ?? "gp",
       notes ?? "",
       lastVerifiedAt
     ]
@@ -168,6 +178,7 @@ app.put("/api/clinics/:id", async (req, res) => {
     lng,
     zip,
     shadowingStatus,
+    primarySpecialty,
     notes
   } = req.body ?? {};
 
@@ -179,7 +190,7 @@ app.put("/api/clinics/:id", async (req, res) => {
   const lastVerifiedAt = new Date().toISOString().slice(0, 10);
   await db.run(
     `update clinics
-     set name = ?, address = ?, phone = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, notes = ?, last_verified_at = ?
+     set name = ?, address = ?, phone = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, notes = ?, last_verified_at = ?
      where id = ?`,
     [
       name,
@@ -189,6 +200,7 @@ app.put("/api/clinics/:id", async (req, res) => {
       lng,
       zip ?? "",
       shadowingStatus ?? "mixed",
+      primarySpecialty ?? "gp",
       notes ?? "",
       lastVerifiedAt,
       id

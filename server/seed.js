@@ -13,6 +13,7 @@ const seedClinics = [
     lng: -122.4362,
     zip: "98405",
     shadowingStatus: "available",
+    primarySpecialty: "gp",
     notes: "Welcomes pre-dental students on Friday mornings.",
     lastVerifiedAt: "2025-12-10"
   },
@@ -24,6 +25,7 @@ const seedClinics = [
     lng: -122.4714,
     zip: "98407",
     shadowingStatus: "mixed",
+    primarySpecialty: "gp",
     notes: "Availability changes each quarter; call ahead.",
     lastVerifiedAt: "2025-11-22"
   },
@@ -35,6 +37,7 @@ const seedClinics = [
     lng: -122.5191,
     zip: "98407",
     shadowingStatus: "unavailable",
+    primarySpecialty: "gp",
     notes: "Currently not accepting shadowing students.",
     lastVerifiedAt: "2025-09-05"
   },
@@ -46,6 +49,7 @@ const seedClinics = [
     lng: -122.4532,
     zip: "98405",
     shadowingStatus: "available",
+    primarySpecialty: "periodontics",
     notes: "Shadowing offered Mon-Wed, 8am-12pm.",
     lastVerifiedAt: "2025-12-01"
   },
@@ -57,6 +61,7 @@ const seedClinics = [
     lng: -122.4729,
     zip: "98407",
     shadowingStatus: "mixed",
+    primarySpecialty: "orthodontics",
     notes: "Usually accepts 1 student per month.",
     lastVerifiedAt: "2025-10-18"
   },
@@ -68,6 +73,7 @@ const seedClinics = [
     lng: -122.5091,
     zip: "98499",
     shadowingStatus: "available",
+    primarySpecialty: "pediatric_dentistry",
     notes: "Prefers 2+ week notice.",
     lastVerifiedAt: "2025-12-07"
   }
@@ -89,6 +95,7 @@ const run = async () => {
       lng real not null,
       zip text,
       shadowing_status text not null default 'mixed',
+      primary_specialty text not null default 'gp',
       notes text,
       last_verified_at text
     );
@@ -102,8 +109,8 @@ const run = async () => {
 
   const insertSql = `
     insert into clinics
-      (id, name, address, phone, lat, lng, zip, shadowing_status, notes, last_verified_at)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, address, phone, lat, lng, zip, shadowing_status, primary_specialty, notes, last_verified_at)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   for (const clinic of seedClinics) {
@@ -116,6 +123,7 @@ const run = async () => {
       clinic.lng,
       clinic.zip,
       clinic.shadowingStatus,
+      clinic.primarySpecialty,
       clinic.notes,
       clinic.lastVerifiedAt
     ]);
