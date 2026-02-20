@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
+import { PRIMARY_SPECIALTIES, SECONDARY_FILTERS } from "../data/specialties.js";
 
 const EMPTY_FORM = {
   name: "",
@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   lng: "",
   shadowingStatus: "mixed",
   primarySpecialty: "gp",
+  secondaryFilter: "all",
   notes: "",
   zip: ""
 };
@@ -87,6 +88,10 @@ export default function ClinicForm({
       zip: formState.zip.trim(),
       shadowingStatus: formState.shadowingStatus,
       primarySpecialty: formState.primarySpecialty,
+      secondaryFilters:
+        formState.secondaryFilter === "all"
+          ? []
+          : [formState.secondaryFilter],
       notes: formState.notes.trim()
     };
 
@@ -142,6 +147,22 @@ export default function ClinicForm({
           </select>
         </label>
       </div>
+
+      <label>
+        Secondary filter (optional)
+        <select
+          name="secondaryFilter"
+          value={formState.secondaryFilter}
+          onChange={handleChange}
+        >
+          <option value="all">None</option>
+          {SECONDARY_FILTERS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label>
         Search clinic (auto-fill)

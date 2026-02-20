@@ -205,6 +205,26 @@ ol {
   align-items: end;
 }
 
+.directory__secondary-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.directory__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.directory__checkbox input {
+  margin: 0;
+}
+
 .directory__summary {
   padding-bottom: 0.35rem;
 }

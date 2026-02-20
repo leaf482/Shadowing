@@ -43,6 +43,9 @@ export default function ClinicsPage({
   specialtyFilterOptions,
   specialtyFilter,
   setSpecialtyFilter,
+  secondaryFilterOptions,
+  secondaryFilter,
+  setSecondaryFilter,
   zipFilter,
   setZipFilter,
   statusFilter,
@@ -54,11 +57,47 @@ export default function ClinicsPage({
   const [centerCoords, setCenterCoords] = useState(MAP_CENTER);
   const [centerLabel, setCenterLabel] = useState("UW Tacoma");
   const [centerError, setCenterError] = useState("");
+  const [useNearby, setUseNearby] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [loadingRequestId, setLoadingRequestId] = useState(null);
 
   useEffect(() => {
+    if (useNearby) {
+      if (!navigator.geolocation) {
+        setLocationError("Geolocation is not supported by your browser.");
+        setUseNearby(false);
+        return;
+      }
+      setLocationLoading(true);
+      setLocationError("");
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCenterCoords({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          setCenterLabel("Your location");
+          setCenterError("");
+          setLocationLoading(false);
+        },
+        (error) => {
+          setLocationError("Could not get your location. Please enable location access.");
+          setUseNearby(false);
+          setCenterCoords(MAP_CENTER);
+          setCenterLabel("UW Tacoma");
+          setLocationLoading(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+      return;
+    }
+  }, [useNearby]);
+
+  useEffect(() => {
+    if (useNearby) return;
     let isActive = true;
     const fetchZipCenter = async () => {
       const trimmed = zipFilter.trim();
@@ -107,12 +146,15 @@ export default function ClinicsPage({
     return () => {
       isActive = false;
     };
-  }, [zipFilter]);
+  }, [zipFilter, useNearby]);
 
   const filteredClinics = useMemo(() => {
-    return clinics.filter((clinic) => {
+    let filtered = clinics.filter((clinic) => {
       const matchesSpecialty =
         specialtyFilter === "all" || clinic.primarySpecialty === specialtyFilter;
+      const matchesSecondary =
+        secondaryFilter === "all" ||
+        (clinic.secondaryFilters || []).includes(secondaryFilter);
       const matchesStatus =
         statusFilter === "all" || clinic.shadowingStatus === statusFilter;
       const matchesZip =
@@ -122,9 +164,34 @@ export default function ClinicsPage({
         milesFilter === "all"
           ? true
           : distanceInMiles(centerCoords, clinic) <= Number(milesFilter);
-      return matchesSpecialty && matchesStatus && matchesZip && matchesRadius;
+      return (
+        matchesSpecialty &&
+        matchesSecondary &&
+        matchesStatus &&
+        matchesZip &&
+        matchesRadius
+      );
     });
-  }, [clinics, specialtyFilter, statusFilter, zipFilter, milesFilter, centerCoords]);
+
+    if (useNearby && centerCoords) {
+      filtered = [...filtered].sort((a, b) => {
+        const distA = distanceInMiles(centerCoords, a);
+        const distB = distanceInMiles(centerCoords, b);
+        return distA - distB;
+      });
+    }
+
+    return filtered;
+  }, [
+    clinics,
+    specialtyFilter,
+    secondaryFilter,
+    statusFilter,
+    zipFilter,
+    milesFilter,
+    centerCoords,
+    useNearby
+  ]);
 
   const handleSendRequest = async (clinic) => {
     setRequestError("");
@@ -180,13 +247,55 @@ export default function ClinicsPage({
             ))}
           </select>
         </label>
+        {specialtyFilter !== "all" && secondaryFilterOptions ? (
+          <label>
+            Secondary filter
+            <select
+              value={secondaryFilter}
+              onChange={(e) => setSecondaryFilter(e.target.value)}
+            >
+              <option value="all">선택안함</option>
+              {secondaryFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           ZIP code
-          <input
-            value={zipFilter}
-            onChange={(event) => setZipFilter(event.target.value)}
-            placeholder="98402"
-          />
+          <div className="inline-input">
+            <input
+              value={zipFilter}
+              onChange={(event) => {
+                setZipFilter(event.target.value);
+                setUseNearby(false);
+              }}
+              placeholder="98402"
+              disabled={useNearby}
+            />
+            <button
+              type="button"
+              className={`button button--small ${useNearby ? "button--primary" : "button--secondary"}`}
+              onClick={() => {
+                if (!useNearby) {
+                  setUseNearby(true);
+                  setZipFilter("");
+                } else {
+                  setUseNearby(false);
+                }
+              }}
+              disabled={locationLoading}
+            >
+              {locationLoading ? "Locating…" : useNearby ? "Using location" : "Nearby You"}
+            </button>
+          </div>
+          {locationError ? (
+            <p className="muted small" style={{ color: "#b91c1c", marginTop: "0.25rem" }}>
+              {locationError}
+            </p>
+          ) : null}
         </label>
         <label>
           Shadowing status

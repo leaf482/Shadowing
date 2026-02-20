@@ -100,24 +100,40 @@ const openDb = async () => {
     if (!e.message?.includes("duplicate column")) throw e;
   }
 
+  // Migration: secondary filters (JSON array, optional)
+  try {
+    await db.run("alter table clinics add column secondary_filters text default '[]'");
+  } catch (e) {
+    if (!e.message?.includes("duplicate column")) throw e;
+  }
+
   return db;
 };
 
-const mapClinicRow = (row) => ({
-  id: row.id,
-  name: row.name,
-  address: row.address,
-  phone: row.phone,
-  lat: row.lat,
-  lng: row.lng,
-  zip: row.zip,
-  shadowingStatus: row.shadowing_status,
-  primarySpecialty: row.primary_specialty ?? "gp",
-  notes: row.notes,
-  lastVerifiedAt: row.last_verified_at,
-  lockExpiresAt: row.lock_expires_at ?? null,
-  lockedByRequestId: row.locked_by_request_id ?? null
-});
+const mapClinicRow = (row) => {
+  let secondaryFilters = [];
+  try {
+    secondaryFilters = row.secondary_filters ? JSON.parse(row.secondary_filters) : [];
+  } catch {
+    secondaryFilters = [];
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    address: row.address,
+    phone: row.phone,
+    lat: row.lat,
+    lng: row.lng,
+    zip: row.zip,
+    shadowingStatus: row.shadowing_status,
+    primarySpecialty: row.primary_specialty ?? "gp",
+    secondaryFilters,
+    notes: row.notes,
+    lastVerifiedAt: row.last_verified_at,
+    lockExpiresAt: row.lock_expires_at ?? null,
+    lockedByRequestId: row.locked_by_request_id ?? null
+  };
+};
 
 
 const db = await openDb();
@@ -137,6 +153,7 @@ app.post("/api/clinics", async (req, res) => {
     zip,
     shadowingStatus,
     primarySpecialty,
+    secondaryFilters,
     notes
   } = req.body ?? {};
 
@@ -147,9 +164,12 @@ app.post("/api/clinics", async (req, res) => {
 
   const id = randomUUID();
   const lastVerifiedAt = new Date().toISOString().slice(0, 10);
+  const secondaryFiltersJson = Array.isArray(secondaryFilters)
+    ? JSON.stringify(secondaryFilters)
+    : "[]";
   await db.run(
-    `insert into clinics (id, name, address, phone, lat, lng, zip, shadowing_status, primary_specialty, notes, last_verified_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into clinics (id, name, address, phone, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       name,
@@ -160,6 +180,7 @@ app.post("/api/clinics", async (req, res) => {
       zip ?? "",
       shadowingStatus ?? "mixed",
       primarySpecialty ?? "gp",
+      secondaryFiltersJson,
       notes ?? "",
       lastVerifiedAt
     ]
@@ -179,6 +200,7 @@ app.put("/api/clinics/:id", async (req, res) => {
     zip,
     shadowingStatus,
     primarySpecialty,
+    secondaryFilters,
     notes
   } = req.body ?? {};
 
@@ -188,9 +210,12 @@ app.put("/api/clinics/:id", async (req, res) => {
   }
 
   const lastVerifiedAt = new Date().toISOString().slice(0, 10);
+  const secondaryFiltersJson = Array.isArray(secondaryFilters)
+    ? JSON.stringify(secondaryFilters)
+    : "[]";
   await db.run(
     `update clinics
-     set name = ?, address = ?, phone = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, notes = ?, last_verified_at = ?
+     set name = ?, address = ?, phone = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, secondary_filters = ?, notes = ?, last_verified_at = ?
      where id = ?`,
     [
       name,
@@ -201,6 +226,7 @@ app.put("/api/clinics/:id", async (req, res) => {
       zip ?? "",
       shadowingStatus ?? "mixed",
       primarySpecialty ?? "gp",
+      secondaryFiltersJson,
       notes ?? "",
       lastVerifiedAt,
       id

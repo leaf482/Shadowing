@@ -16,3 +16,14 @@ export const PRIMARY_SPECIALTY_FILTER_OPTIONS = [
   { value: "all", label: "All" },
   ...PRIMARY_SPECIALTIES
 ];
+
+/** Secondary filter options (optional practice types). Clinics can have zero or multiple. */
+export const SECONDARY_FILTERS = [
+  { value: "implant", label: "Implant Dentistry" },
+  { value: "cosmetic", label: "Cosmetic Dentistry" },
+  { value: "sedation", label: "Sedation Dentistry" },
+  { value: "hospital", label: "Hospital Dentistry" },
+  { value: "community", label: "Community Clinic or FQHC" },
+  { value: "academic", label: "Academic or Dental School Clinic" },
+  { value: "military", label: "Military or VA Dentistry" }
+];
