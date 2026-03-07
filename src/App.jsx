@@ -137,8 +137,6 @@ export default function App() {
 
     if (response.ok) {
       await refreshData();
-      setFormMode("new");
-      setFormClinicId(null);
     } else {
       setLoadError("Could not save clinic.");
     }
@@ -177,6 +175,12 @@ export default function App() {
         }}
       />
       <div className="content">
+        <div className="dev-notice-row">
+          <div className="dev-notice" role="status">
+            <span className="dev-notice__label">In development</span>
+            <span className="dev-notice__text">This site is still in development; features and data may change.</span>
+          </div>
+        </div>
         {mainPage === "tracker" ? (
           <TrackerPage />
         ) : mainPage === "clinics" ? (

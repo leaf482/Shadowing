@@ -44,6 +44,32 @@ ol {
   gap: 1.5rem;
 }
 
+.dev-notice-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dev-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.dev-notice__label {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.dev-notice__text {
+  color: #64748b;
+}
+
 /* Intro (landing) */
 .intro {
   min-height: 100vh;
@@ -294,6 +320,18 @@ ol {
   max-width: 280px;
   height: auto;
   object-fit: contain;
+}
+
+.nav__beta {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #0f172a;
+  background: #e2e8f0;
+  border-radius: 6px;
 }
 
 .nav__bar {

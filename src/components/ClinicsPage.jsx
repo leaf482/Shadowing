@@ -416,6 +416,16 @@ export default function ClinicsPage({
                   </p>
                 </div>
               ) : null}
+              {requestSuccess.clinic.email ? (
+                <div>
+                  <p className="label">Email</p>
+                  <p>
+                    <a href={`mailto:${requestSuccess.clinic.email}`}>
+                      {requestSuccess.clinic.email}
+                    </a>
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <p className="label">Address</p>
                 <p>{requestSuccess.clinic.address}</p>

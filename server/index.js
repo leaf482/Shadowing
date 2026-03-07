@@ -107,6 +107,13 @@ const openDb = async () => {
     if (!e.message?.includes("duplicate column")) throw e;
   }
 
+  // Migration: clinic email (optional)
+  try {
+    await db.run("alter table clinics add column email text");
+  } catch (e) {
+    if (!e.message?.includes("duplicate column")) throw e;
+  }
+
   return db;
 };
 
@@ -122,6 +129,7 @@ const mapClinicRow = (row) => {
     name: row.name,
     address: row.address,
     phone: row.phone,
+    email: row.email ?? null,
     lat: row.lat,
     lng: row.lng,
     zip: row.zip,
@@ -148,6 +156,7 @@ app.post("/api/clinics", async (req, res) => {
     name,
     address,
     phone,
+    email,
     lat,
     lng,
     zip,
@@ -168,13 +177,14 @@ app.post("/api/clinics", async (req, res) => {
     ? JSON.stringify(secondaryFilters)
     : "[]";
   await db.run(
-    `insert into clinics (id, name, address, phone, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into clinics (id, name, address, phone, email, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       name,
       address,
       phone ?? "",
+      email ?? "",
       lat,
       lng,
       zip ?? "",
@@ -195,6 +205,7 @@ app.put("/api/clinics/:id", async (req, res) => {
     name,
     address,
     phone,
+    email,
     lat,
     lng,
     zip,
@@ -215,12 +226,13 @@ app.put("/api/clinics/:id", async (req, res) => {
     : "[]";
   await db.run(
     `update clinics
-     set name = ?, address = ?, phone = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, secondary_filters = ?, notes = ?, last_verified_at = ?
+     set name = ?, address = ?, phone = ?, email = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, secondary_filters = ?, notes = ?, last_verified_at = ?
      where id = ?`,
     [
       name,
       address,
       phone ?? "",
+      email ?? "",
       lat,
       lng,
       zip ?? "",

@@ -5,6 +5,7 @@ const EMPTY_FORM = {
   name: "",
   address: "",
   phone: "",
+  email: "",
   lat: "",
   lng: "",
   shadowingStatus: "mixed",
@@ -83,6 +84,7 @@ export default function ClinicForm({
       name: formState.name.trim(),
       address: formState.address.trim(),
       phone: formState.phone.trim(),
+      email: formState.email.trim(),
       lat: latValue,
       lng: lngValue,
       zip: formState.zip.trim(),
@@ -210,6 +212,17 @@ export default function ClinicForm({
           onChange={handleChange}
           placeholder="Street, City, State"
           required
+        />
+      </label>
+
+      <label>
+        Email address
+        <input
+          type="email"
+          name="email"
+          value={formState.email}
+          onChange={handleChange}
+          placeholder="clinic@example.com"
         />
       </label>
 

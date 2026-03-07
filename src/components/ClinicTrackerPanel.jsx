@@ -67,6 +67,10 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
             <p>{clinic.phone || "Not provided"}</p>
           </div>
           <div>
+            <p className="label">Email</p>
+            <p>{clinic.email ? <a href={`mailto:${clinic.email}`}>{clinic.email}</a> : "Not provided"}</p>
+          </div>
+          <div>
             <p className="label">Last verified</p>
             <p>{clinic.lastVerifiedAt}</p>
           </div>

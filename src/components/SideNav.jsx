@@ -12,6 +12,7 @@ export default function SideNav({ activePage, onNavigate, onLogout }) {
     <aside className="nav">
       <div className="nav__brand">
         <img src={logoImg} alt="" className="nav__logo-img" />
+        <span className="nav__beta">Beta</span>
       </div>
 
       <div className="nav__bar">

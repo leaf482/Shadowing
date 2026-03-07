@@ -43,7 +43,7 @@ export default function LoginPage({ onSuccess, onBack }) {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@uw.edu"
+              placeholder=""
               disabled={submitting}
               className="login__input"
             />
