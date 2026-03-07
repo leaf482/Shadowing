@@ -248,6 +248,13 @@ app.put("/api/clinics/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Delete all clinics (and their shadowing_requests). Use with care.
+app.delete("/api/clinics", async (_req, res) => {
+  await db.run("delete from shadowing_requests");
+  const result = await db.run("delete from clinics");
+  res.json({ ok: true, deleted: result.changes });
+});
+
 // --- Shadowing request (first-come lock + cooldown) ---
 
 app.post("/api/clinics/:id/request", async (req, res) => {
