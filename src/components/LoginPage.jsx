@@ -3,26 +3,66 @@ import { isUWEmail, setSession } from "../lib/auth.js";
 
 export default function LoginPage({ onSuccess, onBack }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const trimmed = email.trim();
-    if (!trimmed) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
       setError("Please enter your email address.");
       return;
     }
-    if (!isUWEmail(trimmed)) {
-      setError("Only UW email addresses are allowed (@uw.edu, @washington.edu).");
+    if (!isUWEmail(trimmedEmail)) {
+      setError("Only .edu email addresses are allowed (e.g. yourname@uw.edu, yourname@plu.edu).");
       return;
     }
+    if (!password || password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
     setSubmitting(true);
-    if (setSession(trimmed)) {
+    try {
+      let res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+      });
+
+      if (res.status === 401) {
+        // Account doesn't exist yet — auto-register then log in
+        const regRes = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail, password }),
+        });
+        if (!regRes.ok) {
+          const regErr = await regRes.json();
+          setError(regErr.error || "Could not create account.");
+          setSubmitting(false);
+          return;
+        }
+        res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail, password }),
+        });
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Invalid email or password.");
+        setSubmitting(false);
+        return;
+      }
+
+      setSession(trimmedEmail);
       onSuccess();
-    } else {
-      setError("Could not save session. Please try again.");
+    } catch {
+      setError("Could not connect to server. Please try again.");
       setSubmitting(false);
     }
   };
@@ -32,7 +72,7 @@ export default function LoginPage({ onSuccess, onBack }) {
       <div className="login__inner card">
         <h1 className="login__title">Sign in</h1>
         <p className="login__subtitle muted">
-          Use your UW email to access the clinic directory and shadowing tools.
+          Use your university .edu email to access the clinic directory and shadowing tools.
         </p>
 
         <form className="login__form" onSubmit={handleSubmit}>
@@ -44,6 +84,17 @@ export default function LoginPage({ onSuccess, onBack }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder=""
+              disabled={submitting}
+              className="login__input"
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               disabled={submitting}
               className="login__input"
             />

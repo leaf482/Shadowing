@@ -1,18 +1,15 @@
 const STORAGE_KEY = "shadowing_verified_email";
 
-const UW_DOMAINS = [
-  "uw.edu",
-  "washington.edu",
-  "u.washington.edu"
-];
-
-export function isUWEmail(email) {
+export function isEduEmail(email) {
   if (!email || typeof email !== "string") return false;
   const normalized = email.trim().toLowerCase();
   if (!normalized.includes("@")) return false;
   const domain = normalized.split("@")[1];
-  return UW_DOMAINS.some((d) => domain === d || domain.endsWith("." + d));
+  return typeof domain === "string" && domain.endsWith(".edu");
 }
+
+// Kept as alias so existing imports continue to work
+export const isUWEmail = isEduEmail;
 
 export function getStoredEmail() {
   try {
@@ -39,5 +36,5 @@ export function clearSession() {
 
 export function isAuthenticated() {
   const email = getStoredEmail();
-  return !!email && isUWEmail(email);
+  return !!email && isEduEmail(email);
 }

@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { EXPERIENCE_TYPES, COUNTRIES, US_STATES, STATUS_OPTIONS } from "../data/experienceTypes.js";
 
-const EMPTY = {
+const makeEmpty = (formType) => ({
   name: "",
-  experienceType: "dental_shadowing_in_person",
+  dateStart: "",
+  experienceType:
+    formType === "volunteering"
+      ? "volunteer"
+      : "dental_shadowing_in_person",
   address: "",
   address2: "",
   city: "",
@@ -18,10 +22,10 @@ const EMPTY = {
   status: "",
   description: "",
   notes: "",
-};
+});
 
-export default function ProjectForm({ onSubmit, onCancel }) {
-  const [form, setForm] = useState(EMPTY);
+export default function ProjectForm({ onSubmit, onCancel, formType }) {
+  const [form, setForm] = useState(() => makeEmpty(formType));
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -30,10 +34,11 @@ export default function ProjectForm({ onSubmit, onCancel }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !form.dateStart) return;
     onSubmit({
       name: form.name.trim(),
-      experienceType: form.experienceType,
+      dateStart: form.dateStart,
+      experienceType: form.experienceType || (formType === "volunteering" ? "volunteer" : "dental_shadowing_in_person"),
       address: form.address.trim(),
       address2: form.address2.trim(),
       city: form.city.trim(),
@@ -49,24 +54,17 @@ export default function ProjectForm({ onSubmit, onCancel }) {
       description: form.description.trim(),
       notes: form.notes.trim(),
     });
-    setForm(EMPTY);
+    setForm(makeEmpty(formType));
   };
+
+  const formTitle =
+    formType === "volunteering"
+      ? "Add Volunteering Experience"
+      : "Add Shadowing Experience";
 
   return (
     <form className="form experience-form" onSubmit={handleSubmit}>
-      <h3>Add project</h3>
-
-      <div className="form__section">
-        <p className="eyebrow">Experience Type</p>
-        <label>
-          Type <span className="required">*</span>
-          <select name="experienceType" value={form.experienceType} onChange={handleChange} required>
-            {EXPERIENCE_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <h3>{formTitle}</h3>
 
       <div className="form__section">
         <p className="eyebrow">Organization</p>
@@ -77,6 +75,16 @@ export default function ProjectForm({ onSubmit, onCancel }) {
             value={form.name}
             onChange={handleChange}
             placeholder="Dental clinic or organization name"
+            required
+          />
+        </label>
+        <label>
+          Start date <span className="required">*</span>
+          <input
+            type="date"
+            name="dateStart"
+            value={form.dateStart}
+            onChange={handleChange}
             required
           />
         </label>

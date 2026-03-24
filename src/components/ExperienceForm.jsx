@@ -31,6 +31,7 @@ const EMPTY_FORM = {
 };
 
 export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
+  const [hoursError, setHoursError] = useState("");
   const [formState, setFormState] = useState(() => {
     if (!initialData) return EMPTY_FORM;
     return {
@@ -57,6 +58,9 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === "hours" || name === "avgWeeklyHours" || name === "numberOfWeeks") {
+      setHoursError("");
+    }
     setFormState((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -65,8 +69,10 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setHoursError("");
     const hoursNum = autoTotal != null ? autoTotal : parseFloat(formState.hours);
     if (Number.isNaN(hoursNum) || hoursNum < 0) {
+      setHoursError("Total hours is required. Enter a value or fill in average weekly hours and number of weeks.");
       return;
     }
 
@@ -104,7 +110,10 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
 
   return (
     <form className="form experience-form" onSubmit={handleSubmit}>
-      <h3>Add experience</h3>
+      <h3>Add AADSAS Experience</h3>
+      <p className="muted small" style={{ marginTop: "-0.25rem" }}>
+        Mirrors the ADEA AADSAS experience section. Fill in what you know — hours auto-calculate when you enter average weekly hours and number of weeks.
+      </p>
 
       <div className="form__section">
         <p className="eyebrow">Experience Type</p>
@@ -404,11 +413,17 @@ export default function ExperienceForm({ onSubmit, onCancel, initialData }) {
             />
           </label>
         </div>
-        <p className="muted small">
-          {autoTotal != null
-            ? "Total auto-calculated. Copy this to your application."
-            : "Enter avg weekly hours and weeks, or type total directly."}
-        </p>
+        {hoursError ? (
+          <p className="muted small" style={{ color: "#dc2626" }} role="alert">
+            {hoursError}
+          </p>
+        ) : (
+          <p className="muted small">
+            {autoTotal != null
+              ? "Total auto-calculated. Copy this to your application."
+              : "Enter avg weekly hours and weeks, or type total directly."}
+          </p>
+        )}
         <label>
           Description / Key responsibilities / Interactions to speak about
           <textarea

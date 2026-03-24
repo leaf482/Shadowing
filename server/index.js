@@ -122,9 +122,17 @@ const openDb = async () => {
     }
   }
 
+  // Migration: experiences user_id
+  try {
+    await db.run("alter table experiences add column user_id text");
+  } catch (e) {
+    if (!e.message?.includes("duplicate column")) throw e;
+  }
+
   // Migration: projects extra columns
   const projectCols = [
     ["user_id", "text"],
+    ["date_start", "text"],
   ];
   for (const [col, def] of projectCols) {
     try {
@@ -185,15 +193,16 @@ const openDb = async () => {
 
 // --- Auth helpers ---
 
-const UW_DOMAINS = ["uw.edu", "washington.edu", "u.washington.edu"];
-
-const isValidUWEmail = (email) => {
+const isValidEduEmail = (email) => {
   if (!email || typeof email !== "string") return false;
   const norm = email.trim().toLowerCase();
   if (!norm.includes("@")) return false;
   const domain = norm.split("@")[1];
-  return UW_DOMAINS.some((d) => domain === d || domain.endsWith("." + d));
+  return typeof domain === "string" && domain.endsWith(".edu");
 };
+
+// Alias kept for internal call sites
+const isValidUWEmail = isValidEduEmail;
 
 const hashPassword = (password) => {
   const salt = randomBytes(16).toString("hex");
@@ -244,6 +253,12 @@ app.get("/api/clinics", async (_req, res) => {
 });
 
 app.post("/api/clinics", async (req, res) => {
+  const requesterId = req.headers["x-user-id"] ?? null;
+  if (!requesterId || !isValidEduEmail(requesterId)) {
+    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+    return;
+  }
+
   const {
     name,
     address,
@@ -292,6 +307,12 @@ app.post("/api/clinics", async (req, res) => {
 });
 
 app.put("/api/clinics/:id", async (req, res) => {
+  const requesterId = req.headers["x-user-id"] ?? null;
+  if (!requesterId || !isValidEduEmail(requesterId)) {
+    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+    return;
+  }
+
   const { id } = req.params;
   const {
     name,
@@ -341,7 +362,12 @@ app.put("/api/clinics/:id", async (req, res) => {
 });
 
 // Delete all clinics (and their shadowing_requests). Use with care.
-app.delete("/api/clinics", async (_req, res) => {
+app.delete("/api/clinics", async (req, res) => {
+  const requesterId = req.headers["x-user-id"] ?? null;
+  if (!requesterId || !isValidEduEmail(requesterId)) {
+    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+    return;
+  }
   await db.run("delete from shadowing_requests");
   const result = await db.run("delete from clinics");
   res.json({ ok: true, deleted: result.changes });
@@ -441,9 +467,14 @@ const mapExperienceRow = (row) => ({
 });
 
 app.get("/api/experiences", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId) {
+    res.json([]);
+    return;
+  }
   const { clinic, supervisor, phone, email, type } = req.query;
-  let sql = "select * from experiences where 1=1";
-  const params = [];
+  let sql = "select * from experiences where user_id = ?";
+  const params = [userId];
 
   if (clinic) {
     sql += " and lower(organization_name) like lower(?)";
@@ -472,6 +503,12 @@ app.get("/api/experiences", async (req, res) => {
 });
 
 app.post("/api/experiences", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidEduEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (.edu email) header is required." });
+    return;
+  }
+
   const body = req.body ?? {};
   const {
     experienceType,
@@ -511,13 +548,14 @@ app.post("/api/experiences", async (req, res) => {
   const id = randomUUID();
   await db.run(
     `insert into experiences (
-      id, experience_type, organization_name, address, address2, city, state_province, country, zip,
+      id, user_id, experience_type, organization_name, address, address2, city, state_province, country, zip,
       supervisor_first_name, supervisor_last_name, supervisor_title, supervisor_phone, supervisor_email,
       hours, date_start, date_end, notes, description, avg_weekly_hours, number_of_weeks,
       current_experience, status, title, type_compensated, type_academic_credit, type_volunteer
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
+      userId,
       experienceType ?? "dental_shadowing_in_person",
       organizationName,
       address ?? "",
@@ -551,6 +589,12 @@ app.post("/api/experiences", async (req, res) => {
 });
 
 app.put("/api/experiences/:id", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidEduEmail(userId)) {
+    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+    return;
+  }
+
   const { id } = req.params;
   const body = req.body ?? {};
   const {
@@ -588,13 +632,13 @@ app.put("/api/experiences/:id", async (req, res) => {
     return;
   }
 
-  await db.run(
+  const result = await db.run(
     `update experiences set
       experience_type = ?, organization_name = ?, address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
       supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?, supervisor_phone = ?, supervisor_email = ?,
       hours = ?, date_start = ?, date_end = ?, notes = ?, description = ?, avg_weekly_hours = ?, number_of_weeks = ?,
       current_experience = ?, status = ?, title = ?, type_compensated = ?, type_academic_credit = ?, type_volunteer = ?
-    where id = ?`,
+    where id = ? and user_id = ?`,
     [
       experienceType ?? "dental_shadowing_in_person",
       organizationName,
@@ -623,19 +667,37 @@ app.put("/api/experiences/:id", async (req, res) => {
       typeAcademicCredit ? 1 : 0,
       typeVolunteer ? 1 : 0,
       id,
+      userId,
     ]
   );
+
+  if (!result.changes) {
+    res.status(404).json({ error: "Experience not found or not owned by this user." });
+    return;
+  }
 
   res.json({ ok: true });
 });
 
 app.delete("/api/experiences/:id", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidEduEmail(userId)) {
+    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+    return;
+  }
   const { id } = req.params;
   if (!id) {
     res.status(400).json({ error: "ID required." });
     return;
   }
-  await db.run("delete from experiences where id = ?", [id]);
+  const result = await db.run(
+    "delete from experiences where id = ? and user_id = ?",
+    [id, userId]
+  );
+  if (!result.changes) {
+    res.status(404).json({ error: "Experience not found or not owned by this user." });
+    return;
+  }
   res.json({ ok: true });
 });
 
@@ -660,6 +722,7 @@ const mapProjectRow = (row) => ({
   status: row.status ?? null,
   description: row.description ?? null,
   notes: row.notes ?? null,
+  dateStart: row.date_start ?? null,
   createdAt: row.created_at,
 });
 
@@ -703,6 +766,7 @@ app.post("/api/projects", async (req, res) => {
 
   const {
     name,
+    dateStart,
     clinicId,
     experienceType,
     address, address2, city, stateProvince, country, zip,
@@ -715,18 +779,22 @@ app.post("/api/projects", async (req, res) => {
     res.status(400).json({ error: "Project name is required." });
     return;
   }
+  if (!dateStart) {
+    res.status(400).json({ error: "Project start date is required." });
+    return;
+  }
 
   const id = randomUUID();
   await db.run(
     `insert into projects (
-      id, user_id, name, clinic_id, experience_type,
+      id, user_id, name, date_start, clinic_id, experience_type,
       address, address2, city, state_province, country, zip,
       supervisor_first_name, supervisor_last_name, supervisor_title,
       supervisor_phone, supervisor_email,
       status, description, notes
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id, userId, name, clinicId ?? null, experienceType ?? null,
+      id, userId, name, dateStart, clinicId ?? null, experienceType ?? null,
       address ?? "", address2 ?? "", city ?? "", stateProvince ?? "", country ?? "", zip ?? "",
       supervisorFirstName ?? "", supervisorLastName ?? "", supervisorTitle ?? "",
       supervisorPhone ?? "", supervisorEmail ?? "",
@@ -773,11 +841,16 @@ app.post("/api/projects/:id/sessions", async (req, res) => {
 
 app.get("/api/projects/:id", async (req, res) => {
   const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+    return;
+  }
+
   const { id } = req.params;
 
   const project = await db.get(
-    "select * from projects where id = ?" + (userId ? " and user_id = ?" : ""),
-    userId ? [id, userId] : [id]
+    "select * from projects where id = ? and user_id = ?",
+    [id, userId]
   );
   if (!project) {
     res.status(404).json({ error: "Project not found." });
@@ -792,6 +865,45 @@ app.get("/api/projects/:id", async (req, res) => {
   res.json({ ...mapProjectRow(project), sessions: sessions.map(mapSessionRow) });
 });
 
+app.delete("/api/projects/:id", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+    return;
+  }
+  const { id } = req.params;
+  const project = await db.get(
+    "select id from projects where id = ? and user_id = ?",
+    [id, userId]
+  );
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  await db.run("delete from sessions where project_id = ?", [id]);
+  await db.run("delete from projects where id = ?", [id]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/projects/:id/sessions/:sessionId", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+    return;
+  }
+  const { id: projectId, sessionId } = req.params;
+  const project = await db.get(
+    "select id from projects where id = ? and user_id = ?",
+    [projectId, userId]
+  );
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  await db.run("delete from sessions where id = ? and project_id = ?", [sessionId, projectId]);
+  res.json({ ok: true });
+});
+
 // --- Auth endpoints ---
 
 app.post("/api/auth/register", async (req, res) => {
@@ -801,8 +913,8 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(400).json({ error: "Email and password are required." });
     return;
   }
-  if (!isValidUWEmail(email)) {
-    res.status(400).json({ error: "A valid UW email address is required (@uw.edu, @washington.edu)." });
+  if (!isValidEduEmail(email)) {
+    res.status(400).json({ error: "A valid .edu email address is required." });
     return;
   }
   if (typeof password !== "string" || password.length < 8) {
@@ -837,8 +949,8 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(400).json({ error: "Email and password are required." });
     return;
   }
-  if (!isValidUWEmail(email)) {
-    res.status(400).json({ error: "A valid UW email address is required." });
+  if (!isValidEduEmail(email)) {
+    res.status(400).json({ error: "A valid .edu email address is required." });
     return;
   }
 

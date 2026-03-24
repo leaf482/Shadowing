@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
+import { getStoredEmail } from "../lib/auth.js";
 
 function isLocked(clinic) {
   if (!clinic?.lockExpiresAt) return false;
@@ -15,6 +17,21 @@ function formatLockExpires(lockExpiresAt) {
 }
 
 export default function ClinicTrackerPanel({ clinic, statusLabels }) {
+  const [totalHours, setTotalHours] = useState(null);
+
+  useEffect(() => {
+    const email = getStoredEmail();
+    if (!email) return;
+    fetch("/api/projects", { headers: { "x-user-id": email } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((projects) => {
+        let total = 0;
+        projects.forEach((p) => p.sessions.forEach((s) => { total += s.hours; }));
+        setTotalHours(total);
+      })
+      .catch(() => {});
+  }, []);
+
   if (!clinic) {
     return (
       <div className="info-panel">
@@ -25,6 +42,14 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
             full details.
           </p>
         </div>
+        {totalHours !== null && (
+          <div className="card card--compact">
+            <p className="eyebrow">Shadowing tracker</p>
+            <h3>Total hours</h3>
+            <p className="tracker__total-value">{totalHours.toFixed(1)}</p>
+            <p className="muted small">Across all your shadowing projects</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -84,10 +109,12 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
       </div>
 
       <div className="card card--compact">
-        <h3>Shadowing tip</h3>
-        <p className="muted small">
-          Jack Johnson is good at skiing.
+        <p className="eyebrow">Shadowing tracker</p>
+        <h3>Total hours</h3>
+        <p className="tracker__total-value">
+          {totalHours !== null ? totalHours.toFixed(1) : "—"}
         </p>
+        <p className="muted small">Across all your shadowing projects</p>
       </div>
     </div>
   );

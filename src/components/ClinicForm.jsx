@@ -42,16 +42,29 @@ export default function ClinicForm({
     setSearchStatus("loading");
     setSearchError("");
     try {
+      // Add "Tacoma WA" context so local dental clinics surface reliably
+      const queryWithContext = `${searchQuery.trim()}, Tacoma, WA`;
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(
-          searchQuery.trim()
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=us&q=${encodeURIComponent(
+          queryWithContext
         )}`
       );
       if (!response.ok) {
         throw new Error("Search failed.");
       }
       const data = await response.json();
-      setSearchResults(data);
+      // If no results with Tacoma context, fall back to plain query
+      if (!data.length) {
+        const fallback = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=us&q=${encodeURIComponent(
+            searchQuery.trim()
+          )}`
+        );
+        const fallbackData = fallback.ok ? await fallback.json() : [];
+        setSearchResults(fallbackData);
+      } else {
+        setSearchResults(data);
+      }
       setSearchStatus("success");
     } catch (error) {
       setSearchError("Could not fetch results. Try again in a moment.");
@@ -59,13 +72,23 @@ export default function ClinicForm({
     }
   };
 
+  const buildCleanAddress = (result) => {
+    const a = result.address ?? {};
+    const street = [a.house_number, a.road].filter(Boolean).join(" ");
+    const city = a.city || a.town || a.village || a.suburb || "";
+    const state = a.state || "";
+    const parts = [street, city, state].filter(Boolean);
+    return parts.length >= 2 ? parts.join(", ") : result.display_name;
+  };
+
   const handleSelectResult = (result) => {
     const name = result.name ?? result.display_name.split(",")[0];
     const zip = result.address?.postcode ?? "";
+    const cleanAddress = buildCleanAddress(result);
     setFormState((prev) => ({
       ...prev,
       name: prev.name || name,
-      address: result.display_name,
+      address: cleanAddress,
       lat: Number(result.lat),
       lng: Number(result.lon),
       zip: prev.zip || zip
@@ -73,12 +96,47 @@ export default function ClinicForm({
     setSearchResults([]);
   };
 
-  const handleSubmit = (event) => {
+  const [submitError, setSubmitError] = useState("");
+
+  const geocodeAddress = async (address) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&countrycodes=us&q=${encodeURIComponent(address)}`
+      );
+      const data = res.ok ? await res.json() : [];
+      if (data.length) {
+        return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+      }
+    } catch {}
+    return null;
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    const latValue =
-      formState.lat === "" ? centerFallback.lat : Number(formState.lat);
-    const lngValue =
-      formState.lng === "" ? centerFallback.lng : Number(formState.lng);
+    setSubmitError("");
+
+    let latValue = formState.lat === "" ? null : Number(formState.lat);
+    let lngValue = formState.lng === "" ? null : Number(formState.lng);
+
+    if (latValue === null || lngValue === null) {
+      const address = formState.address.trim();
+      if (address) {
+        setSearchStatus("loading");
+        const coords = await geocodeAddress(address);
+        setSearchStatus("idle");
+        if (coords) {
+          latValue = coords.lat;
+          lngValue = coords.lng;
+        } else {
+          setSubmitError("Could not locate this address. Use the Search button above to find the clinic and select a result to set the correct coordinates.");
+          return;
+        }
+      } else {
+        // No address typed — cannot determine location
+        setSubmitError("Please enter an address or use the Search button to set the clinic location.");
+        return;
+      }
+    }
 
     const proposed = {
       name: formState.name.trim(),
@@ -257,6 +315,11 @@ export default function ClinicForm({
         />
       </label>
 
+      {submitError && (
+        <p className="muted small" style={{ color: "#b45309", background: "#fef9c3", borderRadius: "10px", padding: "0.5rem 0.75rem" }}>
+          {submitError}
+        </p>
+      )}
       <button className="primary-button" type="submit">
         Save clinic
       </button>
