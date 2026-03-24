@@ -115,9 +115,9 @@ const openDb = async () => {
     }
   }
 
-  // Migration: projects extra columns (placeholder for future additions)
+  // Migration: projects extra columns
   const projectCols = [
-    // e.g. ["some_future_col", "text"]
+    ["user_id", "text"],
   ];
   for (const [col, def] of projectCols) {
     try {
@@ -639,8 +639,16 @@ const mapSessionRow = (row) => ({
   createdAt: row.created_at,
 });
 
-app.get("/api/projects", async (_req, res) => {
-  const rows = await db.all("select * from projects order by created_at desc");
+app.get("/api/projects", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId) {
+    res.json([]);
+    return;
+  }
+  const rows = await db.all(
+    "select * from projects where user_id = ? order by created_at desc",
+    [userId]
+  );
   const result = await Promise.all(
     rows.map(async (p) => {
       const sessions = await db.all(
@@ -654,6 +662,12 @@ app.get("/api/projects", async (_req, res) => {
 });
 
 app.post("/api/projects", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId) {
+    res.status(401).json({ error: "x-user-id header is required." });
+    return;
+  }
+
   const {
     name,
     clinicId,
@@ -672,14 +686,14 @@ app.post("/api/projects", async (req, res) => {
   const id = randomUUID();
   await db.run(
     `insert into projects (
-      id, name, clinic_id, experience_type,
+      id, user_id, name, clinic_id, experience_type,
       address, address2, city, state_province, country, zip,
       supervisor_first_name, supervisor_last_name, supervisor_title,
       supervisor_phone, supervisor_email,
       status, description, notes
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id, name, clinicId ?? null, experienceType ?? null,
+      id, userId, name, clinicId ?? null, experienceType ?? null,
       address ?? "", address2 ?? "", city ?? "", stateProvince ?? "", country ?? "", zip ?? "",
       supervisorFirstName ?? "", supervisorLastName ?? "", supervisorTitle ?? "",
       supervisorPhone ?? "", supervisorEmail ?? "",
@@ -691,9 +705,18 @@ app.post("/api/projects", async (req, res) => {
 });
 
 app.post("/api/projects/:id/sessions", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId) {
+    res.status(401).json({ error: "x-user-id header is required." });
+    return;
+  }
+
   const { id: projectId } = req.params;
 
-  const project = await db.get("select id from projects where id = ?", [projectId]);
+  const project = await db.get(
+    "select id from projects where id = ? and user_id = ?",
+    [projectId, userId]
+  );
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
@@ -716,9 +739,13 @@ app.post("/api/projects/:id/sessions", async (req, res) => {
 });
 
 app.get("/api/projects/:id", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
   const { id } = req.params;
 
-  const project = await db.get("select * from projects where id = ?", [id]);
+  const project = await db.get(
+    "select * from projects where id = ?" + (userId ? " and user_id = ?" : ""),
+    userId ? [id, userId] : [id]
+  );
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;

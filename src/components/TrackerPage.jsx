@@ -3,6 +3,7 @@ import ExperienceForm from "./ExperienceForm.jsx";
 import ProjectForm from "./ProjectForm.jsx";
 import SessionForm from "./SessionForm.jsx";
 import { EXPERIENCE_TYPES } from "../data/experienceTypes.js";
+import { getStoredEmail } from "../lib/auth.js";
 
 const TYPE_LABELS = Object.fromEntries(
   EXPERIENCE_TYPES.map((t) => [t.value, t.label])
@@ -118,9 +119,17 @@ export default function TrackerPage() {
     }
   };
 
+  const userHeaders = () => {
+    const email = getStoredEmail();
+    return email ? { "Content-Type": "application/json", "x-user-id": email } : { "Content-Type": "application/json" };
+  };
+
   const loadProjects = async () => {
     try {
-      const res = await fetch("/api/projects");
+      const email = getStoredEmail();
+      const res = await fetch("/api/projects", {
+        headers: email ? { "x-user-id": email } : {},
+      });
       if (res.ok) setProjects(await res.json());
     } catch {}
   };
@@ -128,7 +137,7 @@ export default function TrackerPage() {
   const handleCreateProject = async (payload) => {
     const res = await fetch("/api/projects", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: userHeaders(),
       body: JSON.stringify(payload),
     });
     if (res.ok) {
@@ -140,7 +149,7 @@ export default function TrackerPage() {
   const handleAddSession = async (projectId, payload) => {
     const res = await fetch(`/api/projects/${projectId}/sessions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: userHeaders(),
       body: JSON.stringify(payload),
     });
     if (res.ok) await loadProjects();
