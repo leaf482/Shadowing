@@ -58,6 +58,41 @@ const openDb = async () => {
       notes text,
       created_at text default (datetime('now'))
     );
+
+    -- New schema: projects (clinic placements)
+    create table if not exists projects (
+      id text primary key,
+      name text not null,
+      clinic_id text,
+      experience_type text,
+      address text,
+      address2 text,
+      city text,
+      state_province text,
+      country text,
+      zip text,
+      supervisor_first_name text,
+      supervisor_last_name text,
+      supervisor_title text,
+      supervisor_phone text,
+      supervisor_email text,
+      status text,
+      description text,
+      notes text,
+      created_at text default (datetime('now')),
+      foreign key (clinic_id) references clinics(id)
+    );
+
+    -- New schema: sessions (individual visit logs per project)
+    create table if not exists sessions (
+      id text primary key,
+      project_id text not null,
+      date text,
+      hours real not null default 0,
+      notes text,
+      created_at text default (datetime('now')),
+      foreign key (project_id) references projects(id)
+    );
   `);
 
   // Migration: add Figure 2 columns if missing
@@ -75,6 +110,30 @@ const openDb = async () => {
   for (const [col, def] of newCols) {
     try {
       await db.run(`alter table experiences add column ${col} ${def}`);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
+  // Migration: projects extra columns (placeholder for future additions)
+  const projectCols = [
+    // e.g. ["some_future_col", "text"]
+  ];
+  for (const [col, def] of projectCols) {
+    try {
+      await db.run(`alter table projects add column ${col} ${def}`);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
+  // Migration: sessions extra columns (placeholder for future additions)
+  const sessionCols = [
+    // e.g. ["some_future_col", "text"]
+  ];
+  for (const [col, def] of sessionCols) {
+    try {
+      await db.run(`alter table sessions add column ${col} ${def}`);
     } catch (e) {
       if (!e.message?.includes("duplicate column")) throw e;
     }
@@ -545,6 +604,118 @@ app.delete("/api/experiences/:id", async (req, res) => {
   }
   await db.run("delete from experiences where id = ?", [id]);
   res.json({ ok: true });
+});
+
+// --- Projects + Sessions ---
+
+const mapProjectRow = (row) => ({
+  id: row.id,
+  name: row.name,
+  clinicId: row.clinic_id ?? null,
+  experienceType: row.experience_type ?? null,
+  address: row.address ?? null,
+  address2: row.address2 ?? null,
+  city: row.city ?? null,
+  stateProvince: row.state_province ?? null,
+  country: row.country ?? null,
+  zip: row.zip ?? null,
+  supervisorFirstName: row.supervisor_first_name ?? null,
+  supervisorLastName: row.supervisor_last_name ?? null,
+  supervisorTitle: row.supervisor_title ?? null,
+  supervisorPhone: row.supervisor_phone ?? null,
+  supervisorEmail: row.supervisor_email ?? null,
+  status: row.status ?? null,
+  description: row.description ?? null,
+  notes: row.notes ?? null,
+  createdAt: row.created_at,
+});
+
+const mapSessionRow = (row) => ({
+  id: row.id,
+  projectId: row.project_id,
+  date: row.date ?? null,
+  hours: row.hours,
+  notes: row.notes ?? null,
+  createdAt: row.created_at,
+});
+
+app.post("/api/projects", async (req, res) => {
+  const {
+    name,
+    clinicId,
+    experienceType,
+    address, address2, city, stateProvince, country, zip,
+    supervisorFirstName, supervisorLastName, supervisorTitle,
+    supervisorPhone, supervisorEmail,
+    status, description, notes,
+  } = req.body ?? {};
+
+  if (!name) {
+    res.status(400).json({ error: "Project name is required." });
+    return;
+  }
+
+  const id = randomUUID();
+  await db.run(
+    `insert into projects (
+      id, name, clinic_id, experience_type,
+      address, address2, city, state_province, country, zip,
+      supervisor_first_name, supervisor_last_name, supervisor_title,
+      supervisor_phone, supervisor_email,
+      status, description, notes
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, name, clinicId ?? null, experienceType ?? null,
+      address ?? "", address2 ?? "", city ?? "", stateProvince ?? "", country ?? "", zip ?? "",
+      supervisorFirstName ?? "", supervisorLastName ?? "", supervisorTitle ?? "",
+      supervisorPhone ?? "", supervisorEmail ?? "",
+      status ?? "", description ?? "", notes ?? "",
+    ]
+  );
+
+  res.status(201).json({ id });
+});
+
+app.post("/api/projects/:id/sessions", async (req, res) => {
+  const { id: projectId } = req.params;
+
+  const project = await db.get("select id from projects where id = ?", [projectId]);
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  const { date, hours, notes } = req.body ?? {};
+  const hoursNum = Number(hours);
+  if (Number.isNaN(hoursNum) || hoursNum < 0) {
+    res.status(400).json({ error: "Valid hours are required." });
+    return;
+  }
+
+  const id = randomUUID();
+  await db.run(
+    "insert into sessions (id, project_id, date, hours, notes) values (?, ?, ?, ?, ?)",
+    [id, projectId, date ?? null, hoursNum, notes ?? ""]
+  );
+
+  res.status(201).json({ id });
+});
+
+app.get("/api/projects/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const project = await db.get("select * from projects where id = ?", [id]);
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  const sessions = await db.all(
+    "select * from sessions where project_id = ? order by date asc, created_at asc",
+    [id]
+  );
+
+  res.json({ ...mapProjectRow(project), sessions: sessions.map(mapSessionRow) });
 });
 
 app.listen(PORT, () => {
