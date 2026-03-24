@@ -639,6 +639,20 @@ const mapSessionRow = (row) => ({
   createdAt: row.created_at,
 });
 
+app.get("/api/projects", async (_req, res) => {
+  const rows = await db.all("select * from projects order by created_at desc");
+  const result = await Promise.all(
+    rows.map(async (p) => {
+      const sessions = await db.all(
+        "select * from sessions where project_id = ? order by date asc, created_at asc",
+        [p.id]
+      );
+      return { ...mapProjectRow(p), sessions: sessions.map(mapSessionRow) };
+    })
+  );
+  res.json(result);
+});
+
 app.post("/api/projects", async (req, res) => {
   const {
     name,

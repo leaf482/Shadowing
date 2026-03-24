@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import ExperienceForm from "./ExperienceForm.jsx";
+import ProjectForm from "./ProjectForm.jsx";
+import SessionForm from "./SessionForm.jsx";
 import { EXPERIENCE_TYPES } from "../data/experienceTypes.js";
 
 const TYPE_LABELS = Object.fromEntries(
@@ -12,6 +14,10 @@ export default function TrackerPage() {
   const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  const [projects, setProjects] = useState([]);
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [activeProjectId, setActiveProjectId] = useState(null);
 
   const [filters, setFilters] = useState({
     clinic: "",
@@ -47,6 +53,10 @@ export default function TrackerPage() {
   useEffect(() => {
     refresh();
   }, [filters.clinic, filters.supervisor, filters.phone, filters.email, filters.type]);
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
 
   const totals = useMemo(() => {
     const byType = {};
@@ -94,6 +104,34 @@ export default function TrackerPage() {
       const err = await response.json();
       setLoadError(err.error || "Could not update.");
     }
+  };
+
+  const loadProjects = async () => {
+    try {
+      const res = await fetch("/api/projects");
+      if (res.ok) setProjects(await res.json());
+    } catch {}
+  };
+
+  const handleCreateProject = async (payload) => {
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      await loadProjects();
+      setShowProjectForm(false);
+    }
+  };
+
+  const handleAddSession = async (projectId, payload) => {
+    const res = await fetch(`/api/projects/${projectId}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) await loadProjects();
   };
 
   const handleDelete = async (id) => {
@@ -330,6 +368,88 @@ export default function TrackerPage() {
           </div>
         </>
       )}
+    </div>
+      <div className="card">
+        <div className="tracker__clinic-header">
+          <h3>Projects</h3>
+          <button
+            className="primary-button"
+            onClick={() => { setShowProjectForm((v) => !v); setActiveProjectId(null); }}
+          >
+            {showProjectForm ? "Close" : "+ Add project"}
+          </button>
+        </div>
+        <p className="muted small">Create a project (clinic placement), then log individual sessions under it.</p>
+
+        {showProjectForm && (
+          <div style={{ marginTop: "1rem" }}>
+            <ProjectForm
+              onSubmit={handleCreateProject}
+              onCancel={() => setShowProjectForm(false)}
+            />
+          </div>
+        )}
+
+        {projects.length === 0 ? (
+          <p className="muted small" style={{ marginTop: "0.75rem" }}>No projects yet.</p>
+        ) : (
+          <ul className="tracker__items" style={{ marginTop: "0.75rem" }}>
+            {projects.map((p) => {
+              const totalHours = p.sessions.reduce((sum, s) => sum + s.hours, 0);
+              const isActive = activeProjectId === p.id;
+              return (
+                <li key={p.id} className="tracker__item">
+                  <div className="tracker__item-main">
+                    <strong>{p.name}</strong>
+                    <span className="tracker__item-type">{p.experienceType ?? ""}</span>
+                    <span className="tracker__item-hours">{totalHours.toFixed(1)}h</span>
+                  </div>
+                  {(p.supervisorFirstName || p.supervisorLastName) && (
+                    <div className="tracker__item-details muted small">
+                      {`Supervisor: ${p.supervisorFirstName ?? ""} ${p.supervisorLastName ?? ""}`.trim()}
+                      {p.supervisorPhone && ` • ${p.supervisorPhone}`}
+                      {p.supervisorEmail && ` • ${p.supervisorEmail}`}
+                    </div>
+                  )}
+                  <div className="tracker__item-actions">
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setActiveProjectId(isActive ? null : p.id)}
+                    >
+                      {isActive ? "Hide" : `Sessions (${p.sessions.length})`}
+                    </button>
+                  </div>
+
+                  {isActive && (
+                    <div style={{ marginTop: "0.5rem" }}>
+                      {p.sessions.length === 0 ? (
+                        <p className="muted small">No sessions yet.</p>
+                      ) : (
+                        <ul className="tracker__items">
+                          {p.sessions.map((s) => (
+                            <li key={s.id} className="tracker__item tracker__item--nested">
+                              <div className="tracker__item-main">
+                                <span>{s.date || "No date"}</span>
+                                <span className="tracker__item-hours">{s.hours}h</span>
+                              </div>
+                              {s.notes && <div className="muted small">{s.notes}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <SessionForm
+                        onSubmit={(payload) => handleAddSession(p.id, payload)}
+                        onCancel={() => setActiveProjectId(null)}
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
