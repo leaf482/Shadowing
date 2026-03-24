@@ -2,6 +2,7 @@ import express from "express";
 import { randomUUID } from "crypto";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import { toAadsasRecords, toCsv } from "./export.js";
 
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.SQLITE_PATH || "./server/shadowing.db";
@@ -757,6 +758,41 @@ app.get("/api/projects/:id", async (req, res) => {
   );
 
   res.json({ ...mapProjectRow(project), sessions: sessions.map(mapSessionRow) });
+});
+
+// --- AADSAS Export ---
+
+app.get("/api/export/aadsas", async (req, res) => {
+  const userId = req.headers["x-user-id"] ?? null;
+  if (!userId) {
+    res.status(401).json({ error: "x-user-id header is required." });
+    return;
+  }
+
+  const rows = await db.all(
+    "select * from projects where user_id = ? order by created_at desc",
+    [userId]
+  );
+  const projects = await Promise.all(
+    rows.map(async (p) => {
+      const sessions = await db.all(
+        "select * from sessions where project_id = ? order by date asc, created_at asc",
+        [p.id]
+      );
+      return { ...mapProjectRow(p), sessions: sessions.map(mapSessionRow) };
+    })
+  );
+
+  const records = toAadsasRecords(projects);
+
+  if (req.query.format === "csv") {
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="aadsas_export.csv"');
+    res.send(toCsv(records));
+    return;
+  }
+
+  res.json(records);
 });
 
 app.listen(PORT, () => {
