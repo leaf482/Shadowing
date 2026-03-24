@@ -73,6 +73,18 @@ export default function TrackerPage() {
     return { total, byType, byClinic };
   }, [experiences]);
 
+  const projectTotals = useMemo(() => {
+    let total = 0;
+    let sessionCount = 0;
+    projects.forEach((p) => {
+      p.sessions.forEach((s) => {
+        total += s.hours;
+        sessionCount++;
+      });
+    });
+    return { total, sessionCount };
+  }, [projects]);
+
   const handleCreate = async (payload) => {
     const response = await fetch("/api/experiences", {
       method: "POST",
@@ -368,7 +380,7 @@ export default function TrackerPage() {
           </div>
         </>
       )}
-    </div>
+
       <div className="card">
         <div className="tracker__clinic-header">
           <h3>Projects</h3>
@@ -380,6 +392,20 @@ export default function TrackerPage() {
           </button>
         </div>
         <p className="muted small">Create a project (clinic placement), then log individual sessions under it.</p>
+
+        {projects.length > 0 && (
+          <div className="tracker__breakdown" style={{ marginTop: "0.5rem" }}>
+            <span className="tracker__breakdown-item">
+              {projectTotals.total.toFixed(1)}h total
+            </span>
+            <span className="tracker__breakdown-item">
+              {projects.length} project{projects.length !== 1 ? "s" : ""}
+            </span>
+            <span className="tracker__breakdown-item">
+              {projectTotals.sessionCount} session{projectTotals.sessionCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
 
         {showProjectForm && (
           <div style={{ marginTop: "1rem" }}>
@@ -453,3 +479,4 @@ export default function TrackerPage() {
     </div>
   );
 }
+
