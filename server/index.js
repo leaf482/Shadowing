@@ -2,14 +2,24 @@ import express from "express";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { toAadsasRecords, toCsv } from "./export.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.SQLITE_PATH || "./server/shadowing.db";
+// Resolved relative to this file's directory — works regardless of cwd
+const DB_PATH = process.env.SQLITE_PATH || join(__dirname, "shadowing.db");
 const COOLDOWN_DAYS = Math.min(21, Math.max(14, parseInt(process.env.COOLDOWN_DAYS, 10) || 14));
 
+const loginAttempts = new Map();
+
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json());
+app.use(express.static(join(__dirname, "../dist")));
 
 const openDb = async () => {
   const db = await open({
@@ -188,6 +198,15 @@ const openDb = async () => {
     if (!e.message?.includes("duplicate column")) throw e;
   }
 
+  // Migration: auth_sessions table (server-issued tokens — NOT the project sessions table)
+  await db.run(`
+    create table if not exists auth_sessions (
+      token text primary key,
+      user_id text not null,
+      created_at text not null
+    )
+  `);
+
   return db;
 };
 
@@ -247,15 +266,33 @@ const mapClinicRow = (row) => {
 
 const db = await openDb();
 
+async function getUserIdFromToken(req) {
+  const token = req.headers["x-session-token"];
+  if (!token) return null;
+  const row = await db.get(
+    "select user_id, created_at from auth_sessions where token = ?",
+    [token]
+  );
+  if (!row) return null;
+
+  const age = Date.now() - new Date(row.created_at).getTime();
+  if (age > 7 * 24 * 60 * 60 * 1000) {
+    await db.run("delete from auth_sessions where token = ?", [token]);
+    return null;
+  }
+
+  return row.user_id;
+}
+
 app.get("/api/clinics", async (_req, res) => {
   const rows = await db.all("select * from clinics order by name");
   res.json(rows.map(mapClinicRow));
 });
 
 app.post("/api/clinics", async (req, res) => {
-  const requesterId = req.headers["x-user-id"] ?? null;
-  if (!requesterId || !isValidEduEmail(requesterId)) {
-    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+  const requesterId = await getUserIdFromToken(req);
+  if (!requesterId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -307,9 +344,9 @@ app.post("/api/clinics", async (req, res) => {
 });
 
 app.put("/api/clinics/:id", async (req, res) => {
-  const requesterId = req.headers["x-user-id"] ?? null;
-  if (!requesterId || !isValidEduEmail(requesterId)) {
-    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+  const requesterId = await getUserIdFromToken(req);
+  if (!requesterId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -363,9 +400,9 @@ app.put("/api/clinics/:id", async (req, res) => {
 
 // Delete all clinics (and their shadowing_requests). Use with care.
 app.delete("/api/clinics", async (req, res) => {
-  const requesterId = req.headers["x-user-id"] ?? null;
-  if (!requesterId || !isValidEduEmail(requesterId)) {
-    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+  const requesterId = await getUserIdFromToken(req);
+  if (!requesterId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   await db.run("delete from shadowing_requests");
@@ -467,9 +504,9 @@ const mapExperienceRow = (row) => ({
 });
 
 app.get("/api/experiences", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
+  const userId = await getUserIdFromToken(req);
   if (!userId) {
-    res.json([]);
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const { clinic, supervisor, phone, email, type } = req.query;
@@ -503,9 +540,9 @@ app.get("/api/experiences", async (req, res) => {
 });
 
 app.post("/api/experiences", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidEduEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (.edu email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -589,9 +626,9 @@ app.post("/api/experiences", async (req, res) => {
 });
 
 app.put("/api/experiences/:id", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidEduEmail(userId)) {
-    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -680,9 +717,9 @@ app.put("/api/experiences/:id", async (req, res) => {
 });
 
 app.delete("/api/experiences/:id", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidEduEmail(userId)) {
-    res.status(401).json({ error: "A valid .edu email header (x-user-id) is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const { id } = req.params;
@@ -736,9 +773,9 @@ const mapSessionRow = (row) => ({
 });
 
 app.get("/api/projects", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
+  const userId = await getUserIdFromToken(req);
   if (!userId) {
-    res.json([]);
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const rows = await db.all(
@@ -758,9 +795,9 @@ app.get("/api/projects", async (req, res) => {
 });
 
 app.post("/api/projects", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -806,9 +843,9 @@ app.post("/api/projects", async (req, res) => {
 });
 
 app.post("/api/projects/:id/sessions", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -840,9 +877,9 @@ app.post("/api/projects/:id/sessions", async (req, res) => {
 });
 
 app.get("/api/projects/:id", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -866,9 +903,9 @@ app.get("/api/projects/:id", async (req, res) => {
 });
 
 app.delete("/api/projects/:id", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const { id } = req.params;
@@ -886,9 +923,9 @@ app.delete("/api/projects/:id", async (req, res) => {
 });
 
 app.delete("/api/projects/:id/sessions/:sessionId", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const { id: projectId, sessionId } = req.params;
@@ -943,6 +980,22 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
+  const ip = req.ip;
+  const now = Date.now();
+  const attempts = loginAttempts.get(ip) || { count: 0, time: now };
+
+  if (now - attempts.time > 10 * 60 * 1000) {
+    attempts.count = 0;
+    attempts.time = now;
+  }
+  attempts.count += 1;
+  loginAttempts.set(ip, attempts);
+
+  if (attempts.count > 10) {
+    res.status(429).json({ error: "Too many login attempts. Try again in 10 minutes." });
+    return;
+  }
+
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
@@ -965,15 +1018,31 @@ app.post("/api/auth/login", async (req, res) => {
     return;
   }
 
-  res.json({ email: normalizedEmail });
+  const token = randomBytes(32).toString("hex");
+  await db.run(
+    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
+    [token, normalizedEmail, new Date().toISOString()]
+  );
+
+  res.json({ email: normalizedEmail, token });
+});
+
+app.delete("/api/auth/logout", async (req, res) => {
+  const token = req.headers["x-session-token"];
+  if (!token) {
+    res.status(400).json({ error: "No token provided." });
+    return;
+  }
+  await db.run("delete from auth_sessions where token = ?", [token]);
+  res.json({ ok: true });
 });
 
 // --- AADSAS Export ---
 
 app.get("/api/export/aadsas", async (req, res) => {
-  const userId = req.headers["x-user-id"] ?? null;
-  if (!userId || !isValidUWEmail(userId)) {
-    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -1003,6 +1072,11 @@ app.get("/api/export/aadsas", async (req, res) => {
   res.json(records);
 });
 
+// SPA fallback — any non-API route returns index.html
+app.get("*", (_req, res) => {
+  res.sendFile(join(__dirname, "../dist/index.html"));
+});
+
 app.listen(PORT, () => {
-  console.log(`SQLite API listening on http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });

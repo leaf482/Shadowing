@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import ProjectForm from "./ProjectForm.jsx";
 import SessionForm from "./SessionForm.jsx";
 import ExperienceForm from "./ExperienceForm.jsx";
-import { getStoredEmail } from "../lib/auth.js";
+import { getStoredEmail, getStoredToken } from "../lib/auth.js";
 
 const EXPERIENCE_TYPE_LABELS = {
   dental_shadowing_in_person: "Dental Shadowing (In-Person)",
@@ -52,17 +52,17 @@ export default function TrackerPage() {
   );
 
   const userHeaders = () => {
-    const email = getStoredEmail();
-    return email
-      ? { "Content-Type": "application/json", "x-user-id": email }
+    const token = getStoredToken();
+    return token
+      ? { "Content-Type": "application/json", "x-session-token": token }
       : { "Content-Type": "application/json" };
   };
 
   const loadProjects = async () => {
     try {
-      const email = getStoredEmail();
+      const token = getStoredToken();
       const res = await fetch("/api/projects", {
-        headers: email ? { "x-user-id": email } : {},
+        headers: token ? { "x-session-token": token } : {},
       });
       if (res.ok) setProjects(await res.json());
     } catch {}
@@ -70,9 +70,9 @@ export default function TrackerPage() {
 
   const loadExperiences = async () => {
     try {
-      const email = getStoredEmail();
+      const token = getStoredToken();
       const res = await fetch("/api/experiences", {
-        headers: email ? { "x-user-id": email } : {},
+        headers: token ? { "x-session-token": token } : {},
       });
       if (res.ok) setExperiences(await res.json());
     } catch {}
@@ -103,9 +103,9 @@ export default function TrackerPage() {
   };
 
   const handleExportAadsas = async () => {
-    const email = getStoredEmail();
+    const token = getStoredToken();
     const res = await fetch("/api/export/aadsas?format=csv", {
-      headers: email ? { "x-user-id": email } : {},
+      headers: token ? { "x-session-token": token } : {},
     });
     if (!res.ok) return;
     const blob = await res.blob();

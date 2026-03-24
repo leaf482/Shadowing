@@ -59,7 +59,8 @@ export default function LoginPage({ onSuccess, onBack }) {
         return;
       }
 
-      setSession(trimmedEmail);
+      const data = await res.json();
+      setSession(trimmedEmail, data.token);
       onSuccess();
     } catch {
       setError("Could not connect to server. Please try again.");

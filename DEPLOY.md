@@ -1,0 +1,158 @@
+# Deployment Guide (Ubuntu + Caddy + PM2)
+
+## Prerequisites
+
+- Ubuntu 20.04 or later
+- A domain pointed at the server IP (e.g. `shadowingnetwork.com`)
+- SSH access to the server
+
+---
+
+## 1. Install Node.js (v20 LTS)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v   # should print v20.x.x
+```
+
+---
+
+## 2. Install PM2
+
+```bash
+sudo npm install -g pm2
+```
+
+---
+
+## 3. Install Caddy (handles HTTPS automatically)
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+```
+
+---
+
+## 4. Upload the project
+
+From your local machine:
+
+```bash
+# Option A: git clone on the server
+git clone https://github.com/YOUR_USERNAME/Shadowing.git /home/ubuntu/shadowing
+
+# Option B: rsync from local
+rsync -avz --exclude node_modules --exclude dist --exclude '*.db' \
+  ./ ubuntu@YOUR_SERVER_IP:/home/ubuntu/shadowing/
+```
+
+---
+
+## 5. Install dependencies and build
+
+```bash
+cd /home/ubuntu/shadowing
+npm install
+npm run build
+```
+
+This creates the `dist/` folder that the server will serve statically.
+
+---
+
+## 6. Configure environment
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Minimum `.env` for production:
+
+```
+PORT=3000
+NODE_ENV=production
+```
+
+---
+
+## 7. Start the Node server with PM2
+
+```bash
+cd /home/ubuntu/shadowing
+pm2 start ecosystem.config.cjs --env production
+pm2 save               # persist across reboots
+pm2 startup            # follow the printed command to enable on boot
+```
+
+Check it's running:
+
+```bash
+pm2 status
+pm2 logs shadowing
+```
+
+---
+
+## 8. Configure Caddy (HTTPS + reverse proxy)
+
+Edit `/etc/caddy/Caddyfile`:
+
+```
+sudo nano /etc/caddy/Caddyfile
+```
+
+Replace the entire contents with:
+
+```
+shadowingnetwork.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Reload Caddy:
+
+```bash
+sudo systemctl reload caddy
+```
+
+Caddy will automatically obtain and renew a Let's Encrypt certificate for your domain.
+
+---
+
+## 9. Verify
+
+Open `https://shadowingnetwork.com` in a browser.  
+The full app (frontend + API) should be live over HTTPS.
+
+---
+
+## Useful commands
+
+| Task | Command |
+|------|---------|
+| View logs | `pm2 logs shadowing` |
+| Restart server | `pm2 restart shadowing` |
+| Stop server | `pm2 stop shadowing` |
+| Deploy new version | `git pull && npm install && npm run build && pm2 restart shadowing` |
+| Check Caddy status | `sudo systemctl status caddy` |
+| Check Caddy logs | `sudo journalctl -u caddy -f` |
+
+---
+
+## Updating the app after changes
+
+```bash
+cd /home/ubuntu/shadowing
+git pull
+npm install          # only needed if package.json changed
+npm run build        # rebuild frontend
+pm2 restart shadowing
+```

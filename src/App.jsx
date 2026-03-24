@@ -168,8 +168,8 @@ export default function App() {
       <SideNav
         activePage={mainPage}
         onNavigate={handleNavigate}
-        onLogout={() => {
-          clearSession();
+        onLogout={async () => {
+          await clearSession();
           window.location.hash = "intro";
           window.location.reload();
         }}
