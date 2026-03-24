@@ -1,5 +1,5 @@
 import express from "express";
-import { randomUUID } from "crypto";
+import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import { toAadsasRecords, toCsv } from "./export.js";
@@ -82,6 +82,12 @@ const openDb = async () => {
       notes text,
       created_at text default (datetime('now')),
       foreign key (clinic_id) references clinics(id)
+    );
+
+    create table if not exists users (
+      email text primary key,
+      password_hash text not null,
+      created_at text default (datetime('now'))
     );
 
     -- New schema: sessions (individual visit logs per project)
@@ -175,6 +181,32 @@ const openDb = async () => {
   }
 
   return db;
+};
+
+// --- Auth helpers ---
+
+const UW_DOMAINS = ["uw.edu", "washington.edu", "u.washington.edu"];
+
+const isValidUWEmail = (email) => {
+  if (!email || typeof email !== "string") return false;
+  const norm = email.trim().toLowerCase();
+  if (!norm.includes("@")) return false;
+  const domain = norm.split("@")[1];
+  return UW_DOMAINS.some((d) => domain === d || domain.endsWith("." + d));
+};
+
+const hashPassword = (password) => {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+};
+
+const verifyPassword = (password, stored) => {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const hashBuf = Buffer.from(hash, "hex");
+  const derived = scryptSync(password, salt, 64);
+  return timingSafeEqual(hashBuf, derived);
 };
 
 const mapClinicRow = (row) => {
@@ -414,11 +446,11 @@ app.get("/api/experiences", async (req, res) => {
   const params = [];
 
   if (clinic) {
-    sql += " and organization_name like ?";
+    sql += " and lower(organization_name) like lower(?)";
     params.push(`%${clinic}%`);
   }
   if (supervisor) {
-    sql += " and (supervisor_first_name like ? or supervisor_last_name like ?)";
+    sql += " and (lower(supervisor_first_name) like lower(?) or lower(supervisor_last_name) like lower(?))";
     params.push(`%${supervisor}%`, `%${supervisor}%`);
   }
   if (phone) {
@@ -426,7 +458,7 @@ app.get("/api/experiences", async (req, res) => {
     params.push(`%${phone}%`);
   }
   if (email) {
-    sql += " and supervisor_email like ?";
+    sql += " and lower(supervisor_email) like lower(?)";
     params.push(`%${email}%`);
   }
   if (type) {
@@ -664,8 +696,8 @@ app.get("/api/projects", async (req, res) => {
 
 app.post("/api/projects", async (req, res) => {
   const userId = req.headers["x-user-id"] ?? null;
-  if (!userId) {
-    res.status(401).json({ error: "x-user-id header is required." });
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
     return;
   }
 
@@ -707,8 +739,8 @@ app.post("/api/projects", async (req, res) => {
 
 app.post("/api/projects/:id/sessions", async (req, res) => {
   const userId = req.headers["x-user-id"] ?? null;
-  if (!userId) {
-    res.status(401).json({ error: "x-user-id header is required." });
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
     return;
   }
 
@@ -760,12 +792,76 @@ app.get("/api/projects/:id", async (req, res) => {
   res.json({ ...mapProjectRow(project), sessions: sessions.map(mapSessionRow) });
 });
 
+// --- Auth endpoints ---
+
+app.post("/api/auth/register", async (req, res) => {
+  const { email, password } = req.body ?? {};
+
+  if (!email || !password) {
+    res.status(400).json({ error: "Email and password are required." });
+    return;
+  }
+  if (!isValidUWEmail(email)) {
+    res.status(400).json({ error: "A valid UW email address is required (@uw.edu, @washington.edu)." });
+    return;
+  }
+  if (typeof password !== "string" || password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters." });
+    return;
+  }
+  if (password.length > 128) {
+    res.status(400).json({ error: "Password is too long." });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await db.get("select email from users where email = ?", [normalizedEmail]);
+  if (existing) {
+    res.status(409).json({ error: "An account with this email already exists." });
+    return;
+  }
+
+  const passwordHash = hashPassword(password);
+  await db.run(
+    "insert into users (email, password_hash) values (?, ?)",
+    [normalizedEmail, passwordHash]
+  );
+
+  res.status(201).json({ email: normalizedEmail });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+
+  if (!email || !password) {
+    res.status(400).json({ error: "Email and password are required." });
+    return;
+  }
+  if (!isValidUWEmail(email)) {
+    res.status(400).json({ error: "A valid UW email address is required." });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.get(
+    "select email, password_hash from users where email = ?",
+    [normalizedEmail]
+  );
+
+  if (!user || !verifyPassword(password, user.password_hash)) {
+    res.status(401).json({ error: "Invalid email or password." });
+    return;
+  }
+
+  res.json({ email: normalizedEmail });
+});
+
 // --- AADSAS Export ---
 
 app.get("/api/export/aadsas", async (req, res) => {
   const userId = req.headers["x-user-id"] ?? null;
-  if (!userId) {
-    res.status(401).json({ error: "x-user-id header is required." });
+  if (!userId || !isValidUWEmail(userId)) {
+    res.status(401).json({ error: "A valid x-user-id (UW email) header is required." });
     return;
   }
 

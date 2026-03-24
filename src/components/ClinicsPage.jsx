@@ -63,6 +63,7 @@ export default function ClinicsPage({
   const [requestSuccess, setRequestSuccess] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [loadingRequestId, setLoadingRequestId] = useState(null);
+  const [nameFilter, setNameFilter] = useState("");
 
   useEffect(() => {
     if (useNearby) {
@@ -149,7 +150,12 @@ export default function ClinicsPage({
   }, [zipFilter, useNearby]);
 
   const filteredClinics = useMemo(() => {
+    const nameTerm = nameFilter.trim().toLowerCase();
     let filtered = clinics.filter((clinic) => {
+      const matchesName =
+        !nameTerm ||
+        clinic.name.toLowerCase().includes(nameTerm) ||
+        (clinic.address ?? "").toLowerCase().includes(nameTerm);
       const matchesSpecialty =
         specialtyFilter === "all" || clinic.primarySpecialty === specialtyFilter;
       const matchesSecondary =
@@ -159,12 +165,13 @@ export default function ClinicsPage({
         statusFilter === "all" || clinic.shadowingStatus === statusFilter;
       const matchesZip =
         zipFilter.trim() === "" ||
-        String(clinic.zip ?? "").startsWith(zipFilter.trim());
+        String(clinic.zip ?? "").includes(zipFilter.trim());
       const matchesRadius =
         milesFilter === "all"
           ? true
           : distanceInMiles(centerCoords, clinic) <= Number(milesFilter);
       return (
+        matchesName &&
         matchesSpecialty &&
         matchesSecondary &&
         matchesStatus &&
@@ -184,6 +191,7 @@ export default function ClinicsPage({
     return filtered;
   }, [
     clinics,
+    nameFilter,
     specialtyFilter,
     secondaryFilter,
     statusFilter,
@@ -234,6 +242,15 @@ export default function ClinicsPage({
       </header>
 
       <div className="directory__filters card">
+        <label>
+          Search by name
+          <input
+            type="search"
+            placeholder="Clinic name or address…"
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+          />
+        </label>
         <label>
           Primary specialty
           <select
