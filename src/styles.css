@@ -336,9 +336,15 @@ label {
   font-weight: 600;
   color: var(--text);
 }
-label > input,
+/* Full-width form elements within labels (exclude checkbox/radio) */
+label > input:not([type="checkbox"]):not([type="radio"]),
 label > select,
-label > textarea,
+label > textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.3rem;
+}
 label > .inline-input,
 label > .search-results,
 label > p,
@@ -399,6 +405,11 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 .form__calc-symbol { font-size: 1.1rem; font-weight: 600; color: var(--text-3); padding-bottom: 0.5rem; }
 .form__hours-calc input[readonly] { background: var(--border-light); cursor: default; }
 
+.form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
 .experience-form .form__section { margin-bottom: 1.25rem; }
 .experience-form .form__section + .form__section {
   padding-top: 1rem;
