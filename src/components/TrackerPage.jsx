@@ -19,6 +19,8 @@ export default function TrackerPage() {
   const [activeForm, setActiveForm] = useState(null); // 'shadowing' | 'aadsas' | 'volunteering'
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [expandedExpId, setExpandedExpId] = useState(null);
+  const [editingExp, setEditingExp] = useState(null); // experience object being edited
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     loadProjects();
@@ -91,6 +93,7 @@ export default function TrackerPage() {
   };
 
   const handleSaveExperience = async (payload) => {
+    setSaveError("");
     const res = await fetch("/api/experiences", {
       method: "POST",
       headers: userHeaders(),
@@ -99,6 +102,26 @@ export default function TrackerPage() {
     if (res.ok) {
       await loadExperiences();
       setActiveForm(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setSaveError(data.error || "Failed to save experience. Please try again.");
+    }
+  };
+
+  const handleUpdateExperience = async (payload) => {
+    if (!editingExp) return;
+    setSaveError("");
+    const res = await fetch(`/api/experiences/${editingExp.id}`, {
+      method: "PUT",
+      headers: userHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      await loadExperiences();
+      setEditingExp(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setSaveError(data.error || "Failed to update experience. Please try again.");
     }
   };
 
@@ -156,6 +179,8 @@ export default function TrackerPage() {
   const toggleActiveForm = (type) => {
     setActiveForm((prev) => (prev === type ? null : type));
     setActiveProjectId(null);
+    setEditingExp(null);
+    setSaveError("");
   };
 
   const renderProjectList = (list, emptyMsg) => {
@@ -193,9 +218,8 @@ export default function TrackerPage() {
                 </button>
                 <button
                   type="button"
-                  className="text-button"
+                  className="text-button text-button--danger"
                   onClick={() => handleDeleteProject(p.id)}
-                  style={{ color: "#dc2626" }}
                 >
                   Delete
                 </button>
@@ -241,42 +265,50 @@ export default function TrackerPage() {
     );
   };
 
+  const shadowingHours = shadowingProjects.reduce((s, p) => s + p.sessions.reduce((ss, se) => ss + se.hours, 0), 0);
+  const volunteerHours = volunteerProjects.reduce((s, p) => s + p.sessions.reduce((ss, se) => ss + se.hours, 0), 0);
+
   return (
     <div className="tracker">
-      <header className="topbar">
-        <div>
+      {/* Page header */}
+      <div className="topbar">
+        <div className="page-header">
           <p className="eyebrow">Dental Shadowing Tracker</p>
           <h1>My tracker</h1>
-          <p className="muted">
+          <p className="muted" style={{ fontSize: "0.9rem" }}>
             Log shadowing sessions, volunteering, and AADSAS experiences for your dental school application.
           </p>
         </div>
-      </header>
+        {(projects.length > 0 || experiences.length > 0) && (
+          <button type="button" className="ghost-button" onClick={handleExportAadsas}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" style={{ opacity: 0.7 }}>
+              <path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+            </svg>
+            Export AADSAS CSV
+          </button>
+        )}
+      </div>
 
-      {/* Total hours summary */}
-      <div className="tracker__totals card">
-        <div className="tracker__clinic-header">
-          <div>
-            <p className="eyebrow">Overall summary</p>
-            <h3>Total hours</h3>
-          </div>
-          {projects.length > 0 && (
-            <button type="button" className="ghost-button" onClick={handleExportAadsas}>
-              Export AADSAS CSV
-            </button>
-          )}
+      {/* Stat cards */}
+      <div className="stat-row">
+        <div className="stat-card card">
+          <p className="stat-card__value">{projectTotals.total.toFixed(1)}</p>
+          <p className="stat-card__label">Total hours logged</p>
         </div>
-        <p className="tracker__total-value">{projectTotals.total.toFixed(1)}</p>
-        <div className="tracker__breakdown">
-          <span className="tracker__breakdown-item">
-            {projects.length} project{projects.length !== 1 ? "s" : ""}
-          </span>
-          <span className="tracker__breakdown-item">
-            {projectTotals.sessionCount} session{projectTotals.sessionCount !== 1 ? "s" : ""}
-          </span>
-          <span className="tracker__breakdown-item">
-            {experiences.length} AADSAS entr{experiences.length !== 1 ? "ies" : "y"}
-          </span>
+        <div className="stat-card card">
+          <p className="stat-card__value">{shadowingHours.toFixed(1)}</p>
+          <p className="stat-card__label">Shadowing hours</p>
+          <p className="stat-card__sub">{shadowingProjects.length} clinic{shadowingProjects.length !== 1 ? "s" : ""}</p>
+        </div>
+        <div className="stat-card card">
+          <p className="stat-card__value">{volunteerHours.toFixed(1)}</p>
+          <p className="stat-card__label">Volunteer hours</p>
+          <p className="stat-card__sub">{volunteerProjects.length} placement{volunteerProjects.length !== 1 ? "s" : ""}</p>
+        </div>
+        <div className="stat-card card">
+          <p className="stat-card__value">{experiences.length}</p>
+          <p className="stat-card__label">AADSAS entries</p>
+          <p className="stat-card__sub">{projectTotals.sessionCount} session{projectTotals.sessionCount !== 1 ? "s" : ""} total</p>
         </div>
       </div>
 
@@ -323,9 +355,14 @@ export default function TrackerPage() {
       )}
       {activeForm === "aadsas" && (
         <div className="card">
+          {saveError && (
+            <p className="muted small" style={{ color: "#dc2626", marginBottom: "0.75rem" }} role="alert">
+              {saveError}
+            </p>
+          )}
           <ExperienceForm
             onSubmit={handleSaveExperience}
-            onCancel={() => setActiveForm(null)}
+            onCancel={() => { setActiveForm(null); setSaveError(""); }}
           />
         </div>
       )}
@@ -339,27 +376,49 @@ export default function TrackerPage() {
         </div>
       )}
 
+      {/* Edit existing AADSAS experience */}
+      {editingExp && (
+        <div className="card">
+          {saveError && (
+            <p className="muted small" style={{ color: "#dc2626", marginBottom: "0.75rem" }} role="alert">
+              {saveError}
+            </p>
+          )}
+          <ExperienceForm
+            initialData={editingExp}
+            onSubmit={handleUpdateExperience}
+            onCancel={() => { setEditingExp(null); setSaveError(""); }}
+          />
+        </div>
+      )}
+
       {/* Projects: shadowing + volunteering side by side */}
       <div className="tracker__section-grid">
         <div className="card">
           <div className="tracker__clinic-header">
-            <h3>Shadowing projects</h3>
-            <span className="tracker__breakdown-item">
-              {shadowingProjects.reduce((s, p) => s + p.sessions.reduce((ss, se) => ss + se.hours, 0), 0).toFixed(1)}h
+            <div>
+              <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Dental shadowing</p>
+              <h3 style={{ margin: 0 }}>Shadowing projects</h3>
+            </div>
+            <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
+              {shadowingHours.toFixed(1)}h
             </span>
           </div>
-          <p className="muted small">Click a project to log sessions and view reflections.</p>
+          <p className="muted small" style={{ marginBottom: "0.75rem" }}>Click a project to log sessions and view reflections.</p>
           {renderProjectList(shadowingProjects, "No shadowing projects yet. Click \"Add Shadowing Experience\" above.")}
         </div>
 
         <div className="card">
           <div className="tracker__clinic-header">
-            <h3>Volunteering projects</h3>
-            <span className="tracker__breakdown-item">
-              {volunteerProjects.reduce((s, p) => s + p.sessions.reduce((ss, se) => ss + se.hours, 0), 0).toFixed(1)}h
+            <div>
+              <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Community service</p>
+              <h3 style={{ margin: 0 }}>Volunteering projects</h3>
+            </div>
+            <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
+              {volunteerHours.toFixed(1)}h
             </span>
           </div>
-          <p className="muted small">Click a project to log sessions and view reflections.</p>
+          <p className="muted small" style={{ marginBottom: "0.75rem" }}>Click a project to log sessions and view reflections.</p>
           {renderProjectList(volunteerProjects, "No volunteering projects yet. Click \"Add Volunteering Experience\" above.")}
         </div>
       </div>
@@ -367,10 +426,13 @@ export default function TrackerPage() {
       {/* AADSAS Experiences */}
       <div className="card">
         <div className="tracker__clinic-header">
-          <h3>AADSAS experiences</h3>
+          <div>
+            <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Dental school application</p>
+            <h3 style={{ margin: 0 }}>AADSAS experiences</h3>
+          </div>
           <span className="muted small">{experiences.length} saved</span>
         </div>
-        <p className="muted small">Long-form ADEA AADSAS entries ready to copy into your application.</p>
+        <p className="muted small" style={{ marginBottom: "0.75rem" }}>Long-form ADEA AADSAS entries ready to copy into your application.</p>
 
         {experiences.length === 0 ? (
           <p className="muted small" style={{ marginTop: "0.75rem" }}>
@@ -403,8 +465,19 @@ export default function TrackerPage() {
                     <button
                       type="button"
                       className="text-button"
+                      onClick={() => {
+                        setEditingExp(exp);
+                        setActiveForm(null);
+                        setSaveError("");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button text-button--danger"
                       onClick={() => handleDeleteExperience(exp.id)}
-                      style={{ color: "#dc2626" }}
                     >
                       Delete
                     </button>

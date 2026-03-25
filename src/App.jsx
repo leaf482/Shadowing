@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
-import { isAuthenticated, clearSession, getStoredToken } from "./lib/auth.js";
+import { isAuthenticated, clearSession, getStoredToken, getStoredEmail } from "./lib/auth.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import MapPanel from "./components/MapPanel.jsx";
@@ -172,6 +172,7 @@ export default function App() {
       <SideNav
         activePage={mainPage}
         onNavigate={handleNavigate}
+        userEmail={getStoredEmail()}
         onLogout={async () => {
           await clearSession();
           window.location.hash = "intro";

@@ -231,188 +231,185 @@ export default function ClinicsPage({
 
   return (
     <div className="directory">
-      <header className="directory__header">
-        <div>
+      {/* Page header */}
+      <div className="topbar">
+        <div className="page-header">
           <p className="eyebrow">Clinic directory</p>
           <h1>Search clinics</h1>
-          <p className="muted">
-            Browse by primary specialty, then filter by ZIP and status.
+          <p className="muted" style={{ fontSize: "0.9rem" }}>
+            Browse dental clinics in Pierce County. Filter by specialty, location, and status.
           </p>
         </div>
-      </header>
+        <span className="results-count">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{ opacity: 0.6 }}>
+            <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+            <path d="M8.5 8.5l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          {filteredClinics.length} clinic{filteredClinics.length !== 1 ? "s" : ""}
+        </span>
+      </div>
 
-      <div className="directory__filters card">
-        <label>
-          Search by name
+      {/* Filter bar */}
+      <div className="card card--compact" style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 0.9fr", gap: "0.75rem", alignItems: "end" }}>
+        <label style={{ fontSize: "0.8rem" }}>
+          Search
           <input
             type="search"
             placeholder="Clinic name or address…"
             value={nameFilter}
             onChange={(e) => setNameFilter(e.target.value)}
+            style={{ fontSize: "0.85rem" }}
           />
         </label>
-        <label>
-          Primary specialty
+        <label style={{ fontSize: "0.8rem" }}>
+          Specialty
           <select
             value={specialtyFilter}
             onChange={(event) => setSpecialtyFilter(event.target.value)}
+            style={{ fontSize: "0.85rem" }}
           >
             {specialtyFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+              <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>
-        {specialtyFilter !== "all" && secondaryFilterOptions ? (
-          <label>
-            Secondary filter
-            <select
-              value={secondaryFilter}
-              onChange={(e) => setSecondaryFilter(e.target.value)}
-            >
-              <option value="all">선택안함</option>
-              {secondaryFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          ZIP code
+        <label style={{ fontSize: "0.8rem" }}>
+          Status
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            style={{ fontSize: "0.85rem" }}
+          >
+            <option value="all">All statuses</option>
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: "0.8rem" }}>
+          Radius
+          <select
+            value={milesFilter}
+            onChange={(event) => setMilesFilter(event.target.value)}
+            style={{ fontSize: "0.85rem" }}
+          >
+            <option value="all">Any distance</option>
+            {MILES_OPTIONS.map((value) => (
+              <option key={value} value={value}>{value} miles</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: "0.8rem" }}>
+          ZIP / Location
           <div className="inline-input">
             <input
               value={zipFilter}
-              onChange={(event) => {
-                setZipFilter(event.target.value);
-                setUseNearby(false);
-              }}
+              onChange={(event) => { setZipFilter(event.target.value); setUseNearby(false); }}
               placeholder="98402"
               disabled={useNearby}
+              style={{ fontSize: "0.85rem" }}
             />
             <button
               type="button"
               className={`button button--small ${useNearby ? "button--primary" : "button--secondary"}`}
-              onClick={() => {
-                if (!useNearby) {
-                  setUseNearby(true);
-                  setZipFilter("");
-                } else {
-                  setUseNearby(false);
-                }
-              }}
+              onClick={() => { if (!useNearby) { setUseNearby(true); setZipFilter(""); } else { setUseNearby(false); } }}
               disabled={locationLoading}
             >
-              {locationLoading ? "Locating…" : useNearby ? "Using location" : "Nearby You"}
+              {locationLoading ? "…" : useNearby ? "📍" : "Near me"}
             </button>
           </div>
-          {locationError ? (
-            <p className="muted small" style={{ color: "#b91c1c", marginTop: "0.25rem" }}>
-              {locationError}
-            </p>
-          ) : null}
+          {locationError && <p className="muted small" style={{ color: "var(--danger)", marginTop: "0.2rem" }}>{locationError}</p>}
         </label>
-        <label>
-          Shadowing status
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">All statuses</option>
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Radius (miles)
-          <select
-            value={milesFilter}
-            onChange={(event) => setMilesFilter(event.target.value)}
-          >
-            <option value="all">Any distance</option>
-            {MILES_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value} miles
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="directory__summary">
-          <p className="label">Results</p>
-          <p>{filteredClinics.length} clinics</p>
-          <p className="muted small">Center: {centerLabel}</p>
-        </div>
       </div>
-      {centerError ? <p className="muted small">{centerError}</p> : null}
-      {requestError ? (
-        <div className="card card--compact request-error" role="alert">
-          <p>{requestError}</p>
-          <button
-            type="button"
-            className="button button--secondary button--small"
-            onClick={() => setRequestError("")}
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
 
-      <div className="directory__list">
-        {filteredClinics.map((clinic) => {
-          const locked = isLocked(clinic);
-          const availableForRequest = isAvailableForRequest(clinic);
-          const statusLabel =
-            clinic.shadowingStatus === "available" && locked
-              ? `Temporarily Unavailable (until ${formatLockExpires(clinic.lockExpiresAt)})`
-              : statusOptions.find((o) => o.value === clinic.shadowingStatus)?.label ?? clinic.shadowingStatus;
-          const statusClass =
-            clinic.shadowingStatus === "available" && locked
-              ? "status-pill--locked"
-              : clinic.shadowingStatus;
-          const specialtyLabel =
-            PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)
-              ?.label ?? clinic.primarySpecialty;
-          return (
-            <article key={clinic.id} className="card directory__card">
-              <div>
-                <h3>{clinic.name}</h3>
-                <p className="muted small specialty-label">{specialtyLabel}</p>
-                <p className="muted">{clinic.address}</p>
-                <p className="muted small">ZIP {clinic.zip || "Not listed"}</p>
-              </div>
-              <div className="directory__card-status">
-                <span className={`status-pill status-pill--${statusClass}`}>
-                  {statusLabel}
-                </span>
-                {availableForRequest ? (
-                  <button
-                    type="button"
-                    className="button button--primary button--small"
-                    disabled={loadingRequestId === clinic.id}
-                    onClick={() => handleReserveSlot(clinic)}
-                  >
-                    {loadingRequestId === clinic.id
-                      ? "Reserving…"
-                      : "Reserve slot"}
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          );
-        })}
+      {/* Secondary specialty filter */}
+      {specialtyFilter !== "all" && secondaryFilterOptions && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <span className="small muted">Sub-filter:</span>
+          <select
+            value={secondaryFilter}
+            onChange={(e) => setSecondaryFilter(e.target.value)}
+            style={{ fontSize: "0.82rem", padding: "0.35rem 0.6rem", borderRadius: "999px", border: "1.5px solid var(--border)" }}
+          >
+            <option value="all">All</option>
+            {secondaryFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          {centerLabel !== "UW Tacoma" && (
+            <span className="small muted">· Center: {centerLabel}</span>
+          )}
+        </div>
+      )}
+
+      {centerError && <p className="muted small">{centerError}</p>}
+
+      {/* Error banner */}
+      {requestError && (
+        <div className="card card--compact request-error" role="alert">
+          <p style={{ margin: 0 }}>{requestError}</p>
+          <button type="button" className="button button--secondary button--small" onClick={() => setRequestError("")}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Clinic table */}
+      <div className="clinic-table">
+        <div className="clinic-table__header">
+          <span>Clinic</span>
+          <span>Specialty</span>
+          <span>Status</span>
+          <span style={{ textAlign: "right" }}>Action</span>
+        </div>
+
         {filteredClinics.length === 0 ? (
-          <div className="card">
-            <p>No clinics match your filters yet.</p>
-            <p className="muted small">
-              Try a different ZIP code or broaden the status filter.
-            </p>
+          <div className="clinic-empty">
+            <p style={{ fontWeight: 600, marginBottom: "0.25rem" }}>No clinics match your filters</p>
+            <p className="muted small" style={{ margin: 0 }}>Try a different ZIP code, specialty, or broaden the status filter.</p>
           </div>
-        ) : null}
+        ) : (
+          filteredClinics.map((clinic) => {
+            const locked = isLocked(clinic);
+            const availableForRequest = isAvailableForRequest(clinic);
+            const statusLabel =
+              clinic.shadowingStatus === "available" && locked
+                ? `On hold until ${formatLockExpires(clinic.lockExpiresAt)}`
+                : statusOptions.find((o) => o.value === clinic.shadowingStatus)?.label ?? clinic.shadowingStatus;
+            const statusClass =
+              clinic.shadowingStatus === "available" && locked ? "locked" : clinic.shadowingStatus;
+            const specialtyLabel =
+              PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)?.label ?? clinic.primarySpecialty;
+
+            return (
+              <div key={clinic.id} className="clinic-row">
+                <div className="clinic-row__info">
+                  <span className={`status-dot status-dot--${statusClass}`} style={{ marginTop: "5px" }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="clinic-row__name">{clinic.name}</div>
+                    {clinic.address && (
+                      <div className="clinic-row__addr">{clinic.address}{clinic.zip ? ` · ${clinic.zip}` : ""}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="clinic-row__specialty">{specialtyLabel}</div>
+                <div className="clinic-row__status">
+                  <span className={`status-pill status-pill--${statusClass}`}>{statusLabel}</span>
+                </div>
+                <div className="clinic-row__action">
+                  {availableForRequest ? (
+                    <button
+                      type="button"
+                      className="button button--primary button--small"
+                      disabled={loadingRequestId === clinic.id}
+                      onClick={() => handleReserveSlot(clinic)}
+                    >
+                      {loadingRequestId === clinic.id ? "…" : "Reserve slot"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {requestSuccess ? (
