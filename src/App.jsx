@@ -208,45 +208,72 @@ export default function App() {
           />
         ) : mainPage === "guidelines" ? (
           <GuidePage />
-        ) : (
-          <>
-            <header className="topbar">
-              <div>
-                <p className="eyebrow">UW Tacoma region</p>
-                <h1>Dashboard</h1>
-                <p className="muted">
-                  Verified dental clinics, map discovery.
-                </p>
+        ) : (() => {
+          const availableCount   = clinics.filter(c => c.shadowingStatus === "available").length;
+          const unavailableCount = clinics.filter(c => c.shadowingStatus === "unavailable").length;
+          const mixedCount       = clinics.filter(c => c.shadowingStatus === "mixed").length;
+          return (
+            <>
+              {/* Page header */}
+              <div className="topbar">
+                <div className="page-header">
+                  <p className="eyebrow">Pierce County · UW Tacoma region</p>
+                  <h1>Dashboard</h1>
+                  <p className="muted" style={{ fontSize: "0.9rem" }}>
+                    Community-reported dental clinic directory for pre-dental students.
+                  </p>
+                </div>
               </div>
-            </header>
 
-            <div className="grid">
-              <section className="panel panel--left">
-                <HubPanel
-                  clinics={clinics}
-                  onCreateSubmission={handleCreateSubmission}
-                  statusOptions={statusOptions}
-                  centerFallback={CENTER_FALLBACK}
-                  isLoading={isLoading}
-                  loadError={loadError}
-                />
-              </section>
-              <section className="panel panel--map">
-                <MapPanel
-                  clinics={clinics}
-                  selectedClinicId={selectedClinicId}
-                  onSelectClinic={handleSelectClinic}
-                />
-              </section>
-              <section className="panel panel--right">
-                <ClinicTrackerPanel
-                  clinic={selectedClinic}
-                  statusLabels={STATUS_LABELS}
-                />
-              </section>
-            </div>
-          </>
-        )}
+              {/* Stats row */}
+              <div className="dash-stats">
+                <div className="dash-stat">
+                  <span className="dash-stat__num">{clinics.length}</span>
+                  <span className="dash-stat__label">Total clinics</span>
+                </div>
+                <div className="dash-stat dash-stat--available">
+                  <span className="dash-stat__num">{availableCount}</span>
+                  <span className="dash-stat__label">Accepting students</span>
+                </div>
+                <div className="dash-stat dash-stat--mixed">
+                  <span className="dash-stat__num">{mixedCount}</span>
+                  <span className="dash-stat__label">Mixed / seasonal</span>
+                </div>
+                <div className="dash-stat dash-stat--unavailable">
+                  <span className="dash-stat__num">{unavailableCount}</span>
+                  <span className="dash-stat__label">Not accepting</span>
+                </div>
+              </div>
+
+              {/* Main grid */}
+              <div className="dash-grid">
+                <section className="dash-grid__form">
+                  <HubPanel
+                    clinics={clinics}
+                    onCreateSubmission={handleCreateSubmission}
+                    statusOptions={statusOptions}
+                    centerFallback={CENTER_FALLBACK}
+                    isLoading={isLoading}
+                    loadError={loadError}
+                  />
+                </section>
+                <section className="dash-grid__map panel panel--map">
+                  <MapPanel
+                    clinics={clinics}
+                    selectedClinicId={selectedClinicId}
+                    onSelectClinic={handleSelectClinic}
+                  />
+                </section>
+                <section className="dash-grid__details">
+                  <ClinicTrackerPanel
+                    clinic={selectedClinic}
+                    statusLabels={STATUS_LABELS}
+                  />
+                </section>
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

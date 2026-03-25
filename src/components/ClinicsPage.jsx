@@ -234,113 +234,135 @@ export default function ClinicsPage({
       {/* Page header */}
       <div className="topbar">
         <div className="page-header">
-          <p className="eyebrow">Clinic directory</p>
+          <p className="eyebrow">Clinic directory · Pierce County</p>
           <h1>Search clinics</h1>
           <p className="muted" style={{ fontSize: "0.9rem" }}>
             Browse dental clinics in Pierce County. Filter by specialty, location, and status.
           </p>
         </div>
-        <span className="results-count">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{ opacity: 0.6 }}>
-            <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-            <path d="M8.5 8.5l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          {filteredClinics.length} clinic{filteredClinics.length !== 1 ? "s" : ""}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.3rem", flexShrink: 0 }}>
+          <span className="results-count">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{ opacity: 0.6 }}>
+              <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+              <path d="M8.5 8.5l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {filteredClinics.length} result{filteredClinics.length !== 1 ? "s" : ""}
+          </span>
+          {centerLabel !== "UW Tacoma" && (
+            <span className="small muted">📍 {centerLabel}</span>
+          )}
+        </div>
       </div>
 
       {/* Filter bar */}
-      <div className="card card--compact" style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 0.9fr", gap: "0.75rem", alignItems: "end" }}>
-        <label style={{ fontSize: "0.8rem" }}>
-          Search
-          <input
-            type="search"
-            placeholder="Clinic name or address…"
-            value={nameFilter}
-            onChange={(e) => setNameFilter(e.target.value)}
-            style={{ fontSize: "0.85rem" }}
-          />
-        </label>
-        <label style={{ fontSize: "0.8rem" }}>
-          Specialty
-          <select
-            value={specialtyFilter}
-            onChange={(event) => setSpecialtyFilter(event.target.value)}
-            style={{ fontSize: "0.85rem" }}
-          >
-            {specialtyFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label style={{ fontSize: "0.8rem" }}>
-          Status
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            style={{ fontSize: "0.85rem" }}
-          >
-            <option value="all">All statuses</option>
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label style={{ fontSize: "0.8rem" }}>
-          Radius
-          <select
-            value={milesFilter}
-            onChange={(event) => setMilesFilter(event.target.value)}
-            style={{ fontSize: "0.85rem" }}
-          >
-            <option value="all">Any distance</option>
-            {MILES_OPTIONS.map((value) => (
-              <option key={value} value={value}>{value} miles</option>
-            ))}
-          </select>
-        </label>
-        <label style={{ fontSize: "0.8rem" }}>
-          ZIP / Location
-          <div className="inline-input">
+      <div className="card card--compact">
+        <div className="clinic-filters">
+          <label>
+            Search clinic
             <input
-              value={zipFilter}
-              onChange={(event) => { setZipFilter(event.target.value); setUseNearby(false); }}
-              placeholder="98402"
-              disabled={useNearby}
-              style={{ fontSize: "0.85rem" }}
+              type="search"
+              placeholder="Clinic name or address…"
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
             />
+          </label>
+          <label>
+            Specialty
+            <select value={specialtyFilter} onChange={(e) => setSpecialtyFilter(e.target.value)}>
+              {specialtyFilterOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All statuses</option>
+              {statusOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            ZIP / Radius
+            <div style={{ display: "flex", gap: "0.4rem" }}>
+              <input
+                value={zipFilter}
+                onChange={(e) => { setZipFilter(e.target.value); setUseNearby(false); }}
+                placeholder="98402"
+                disabled={useNearby}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <select
+                value={milesFilter}
+                onChange={(e) => setMilesFilter(e.target.value)}
+                style={{ width: "auto", flexShrink: 0 }}
+              >
+                <option value="all">Any</option>
+                {MILES_OPTIONS.map((v) => (
+                  <option key={v} value={v}>{v}mi</option>
+                ))}
+              </select>
+            </div>
+            {locationError && (
+              <p className="muted small" style={{ color: "var(--danger)", marginTop: "0.2rem" }}>{locationError}</p>
+            )}
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
             <button
               type="button"
               className={`button button--small ${useNearby ? "button--primary" : "button--secondary"}`}
               onClick={() => { if (!useNearby) { setUseNearby(true); setZipFilter(""); } else { setUseNearby(false); } }}
               disabled={locationLoading}
+              style={{ width: "100%" }}
             >
-              {locationLoading ? "…" : useNearby ? "📍" : "Near me"}
+              {locationLoading ? "Locating…" : useNearby ? "📍 Nearby" : "📍 Near me"}
             </button>
+            {(nameFilter || specialtyFilter !== "all" || statusFilter !== "all" || zipFilter || milesFilter !== "all" || useNearby) && (
+              <button
+                type="button"
+                className="clinic-filters__clear"
+                onClick={() => {
+                  setNameFilter("");
+                  setSpecialtyFilter("all");
+                  setStatusFilter("all");
+                  setZipFilter("");
+                  setMilesFilter("all");
+                  setUseNearby(false);
+                }}
+              >
+                Clear filters
+              </button>
+            )}
           </div>
-          {locationError && <p className="muted small" style={{ color: "var(--danger)", marginTop: "0.2rem" }}>{locationError}</p>}
-        </label>
-      </div>
-
-      {/* Secondary specialty filter */}
-      {specialtyFilter !== "all" && secondaryFilterOptions && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span className="small muted">Sub-filter:</span>
-          <select
-            value={secondaryFilter}
-            onChange={(e) => setSecondaryFilter(e.target.value)}
-            style={{ fontSize: "0.82rem", padding: "0.35rem 0.6rem", borderRadius: "999px", border: "1.5px solid var(--border)" }}
-          >
-            <option value="all">All</option>
-            {secondaryFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          {centerLabel !== "UW Tacoma" && (
-            <span className="small muted">· Center: {centerLabel}</span>
-          )}
         </div>
-      )}
+
+        {/* Sub-filters row */}
+        {(specialtyFilter !== "all" && secondaryFilterOptions || centerLabel !== "UW Tacoma") && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid var(--border-light)", flexWrap: "wrap" }}>
+            {specialtyFilter !== "all" && secondaryFilterOptions && (
+              <>
+                <span className="small muted">Sub-filter:</span>
+                <select
+                  value={secondaryFilter}
+                  onChange={(e) => setSecondaryFilter(e.target.value)}
+                  style={{ fontSize: "0.82rem", padding: "0.3rem 0.6rem", borderRadius: "999px" }}
+                >
+                  <option value="all">All</option>
+                  {secondaryFilterOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {centerLabel !== "UW Tacoma" && (
+              <span className="small muted" style={{ marginLeft: "auto" }}>
+                📍 Center: {centerLabel}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {centerError && <p className="muted small">{centerError}</p>}
 
