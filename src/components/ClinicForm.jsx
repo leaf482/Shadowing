@@ -210,13 +210,13 @@ export default function ClinicForm({
           </label>
         </div>
 
-        <label style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+        <label style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", overflow: "hidden" }}>
           <span style={{ fontWeight: 600, fontSize: "0.875rem", flexShrink: 0 }}>Sub-category</span>
           <select
             name="secondaryFilter"
             value={formState.secondaryFilter}
             onChange={handleChange}
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 0 }}
           >
             <option value="all">None</option>
             {SECONDARY_FILTERS.map((opt) => (

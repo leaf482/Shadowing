@@ -1125,6 +1125,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  overflow: hidden;
 }
 .clinic-form__section + .clinic-form__section {
   padding-top: 0.9rem;
