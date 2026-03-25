@@ -207,6 +207,19 @@ const openDb = async () => {
     )
   `);
 
+  // Migration: email verification fields on users
+  for (const col of [
+    "alter table users add column is_verified integer not null default 0",
+    "alter table users add column verification_code text",
+    "alter table users add column verification_expires_at text",
+  ]) {
+    try {
+      await db.run(col);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
   return db;
 };
 
@@ -1009,12 +1022,18 @@ app.post("/api/auth/login", async (req, res) => {
 
   const normalizedEmail = email.trim().toLowerCase();
   const user = await db.get(
-    "select email, password_hash from users where email = ?",
+    "select email, password_hash, is_verified from users where email = ?",
     [normalizedEmail]
   );
 
   if (!user || !verifyPassword(password, user.password_hash)) {
     res.status(401).json({ error: "Invalid email or password." });
+    return;
+  }
+
+  if (!user.is_verified) {
+    await sendVerificationCode(normalizedEmail);
+    res.status(403).json({ error: "email_not_verified", email: normalizedEmail });
     return;
   }
 
@@ -1035,6 +1054,94 @@ app.delete("/api/auth/logout", async (req, res) => {
   }
   await db.run("delete from auth_sessions where token = ?", [token]);
   res.json({ ok: true });
+});
+
+// --- Email verification ---
+
+async function sendVerificationCode(email) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  await db.run(
+    "update users set verification_code = ?, verification_expires_at = ? where email = ?",
+    [code, expiresAt, email]
+  );
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
+  if (!apiKey) return;
+
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [email],
+      subject: "Your Shadow Network verification code",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2>Verify your email</h2>
+          <p>Enter this code to complete sign-in:</p>
+          <div style="font-size:2rem;font-weight:bold;letter-spacing:0.25em;padding:1rem;background:#f4f4f5;border-radius:8px;text-align:center">${code}</div>
+          <p style="color:#888;font-size:0.875rem">Expires in 10 minutes. If you did not request this, ignore this email.</p>
+        </div>
+      `,
+    }),
+  }).catch(() => {});
+}
+
+app.post("/api/auth/send-verification", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email || !isValidEduEmail(email)) {
+    res.status(400).json({ error: "A valid .edu email is required." });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.get("select email from users where email = ?", [normalizedEmail]);
+  if (!user) {
+    res.status(404).json({ error: "Account not found." });
+    return;
+  }
+  await sendVerificationCode(normalizedEmail);
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/verify", async (req, res) => {
+  const { email, code } = req.body ?? {};
+  if (!email || !code) {
+    res.status(400).json({ error: "Email and code are required." });
+    return;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.get(
+    "select verification_code, verification_expires_at from users where email = ?",
+    [normalizedEmail]
+  );
+
+  if (!user || user.verification_code !== String(code).trim()) {
+    res.status(400).json({ error: "Invalid verification code." });
+    return;
+  }
+  if (new Date(user.verification_expires_at) < new Date()) {
+    res.status(400).json({ error: "Code has expired. Please request a new one." });
+    return;
+  }
+
+  await db.run(
+    "update users set is_verified = 1, verification_code = null, verification_expires_at = null where email = ?",
+    [normalizedEmail]
+  );
+
+  const token = randomBytes(32).toString("hex");
+  await db.run(
+    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
+    [token, normalizedEmail, new Date().toISOString()]
+  );
+
+  res.json({ email: normalizedEmail, token });
 });
 
 // --- AADSAS Export ---

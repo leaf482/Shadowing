@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
-import { isAuthenticated, clearSession } from "./lib/auth.js";
+import { isAuthenticated, clearSession, getStoredToken } from "./lib/auth.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import MapPanel from "./components/MapPanel.jsx";
@@ -129,9 +129,13 @@ export default function App() {
       : "/api/clinics";
     const method = isUpdate ? "PUT" : "POST";
 
+    const token = getStoredToken();
     const response = await fetch(endpoint, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "x-session-token": token } : {}),
+      },
       body: JSON.stringify(payload.proposed)
     });
 

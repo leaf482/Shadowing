@@ -6,6 +6,10 @@ export default function LoginPage({ onSuccess, onBack }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState("credentials"); // "credentials" | "verify"
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,6 +56,16 @@ export default function LoginPage({ onSuccess, onBack }) {
         });
       }
 
+      if (res.status === 403) {
+        const data = await res.json();
+        if (data.error === "email_not_verified") {
+          setPendingEmail(data.email || trimmedEmail);
+          setStep("verify");
+          setSubmitting(false);
+          return;
+        }
+      }
+
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "Invalid email or password.");
@@ -67,6 +81,97 @@ export default function LoginPage({ onSuccess, onBack }) {
       setSubmitting(false);
     }
   };
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!verifyCode.trim()) {
+      setError("Please enter the verification code.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pendingEmail, code: verifyCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Invalid code. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+      setSession(pendingEmail, data.token);
+      onSuccess();
+    } catch {
+      setError("Could not connect to server. Please try again.");
+      setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError("");
+    setResendCooldown(true);
+    setTimeout(() => setResendCooldown(false), 30000);
+    try {
+      await fetch("/api/auth/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pendingEmail }),
+      });
+    } catch {}
+  };
+
+  if (step === "verify") {
+    return (
+      <div className="login">
+        <div className="login__inner card">
+          <h1 className="login__title">Check your email</h1>
+          <p className="login__subtitle muted">
+            We sent a 6-digit verification code to <strong>{pendingEmail}</strong>. Enter it below to continue.
+          </p>
+          <form className="login__form" onSubmit={handleVerify}>
+            <label>
+              Verification code
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="one-time-code"
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+                disabled={submitting}
+                className="login__input"
+                autoFocus
+              />
+            </label>
+            {error ? (
+              <p className="login__error" role="alert">{error}</p>
+            ) : null}
+            <div className="login__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={handleResend}
+                disabled={submitting || resendCooldown}
+              >
+                {resendCooldown ? "Code sent" : "Resend code"}
+              </button>
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={submitting}
+              >
+                {submitting ? "Verifying…" : "Verify"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login">
