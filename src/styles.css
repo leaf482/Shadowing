@@ -1030,7 +1030,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 /* ── Dashboard grid ──────────────────────────────────────── */
 .dash-grid {
   display: grid;
-  grid-template-columns: 268px minmax(0, 1fr) 290px;
+  grid-template-columns: 340px minmax(0, 1fr) 286px;
   grid-template-areas: "form map details";
   gap: 1.25rem;
   align-items: start;
@@ -1120,6 +1120,41 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 .clinic-info__field-value { font-size: 0.875rem; color: var(--text); word-break: break-word; }
 .clinic-info__notes-block { padding-top: 0.85rem; border-top: 1px solid var(--border-light); }
 
+/* ── Clinic form sections ────────────────────────────────── */
+.clinic-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.clinic-form__section + .clinic-form__section {
+  padding-top: 0.9rem;
+  margin-top: 0.1rem;
+  border-top: 1px solid var(--border-light);
+}
+.clinic-form__eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-3);
+  margin: 0 0 0.1rem;
+}
+.clinic-form__search-wrap {
+  background: var(--bg);
+  border-radius: var(--r);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.clinic-form__search-wrap .inline-input { gap: 0.4rem; }
+.clinic-form__search-hint {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* ── Hub panel (Add clinic) ──────────────────────────────── */
 .hub-panel__header {
   display: flex;
@@ -1151,7 +1186,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   .panel--map { min-height: 500px; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-grid {
-    grid-template-columns: 240px minmax(0, 1fr) 256px;
+    grid-template-columns: 300px minmax(0, 1fr) 260px;
   }
   .clinic-filters { grid-template-columns: 1fr 1fr 1fr; }
   .clinic-table__header,

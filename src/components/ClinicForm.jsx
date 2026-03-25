@@ -165,164 +165,194 @@ export default function ClinicForm({
   };
 
   return (
-    <form className="form" onSubmit={handleSubmit}>
-      <div className="form__row">
+    <form className="form" onSubmit={handleSubmit} style={{ gap: "0" }}>
+
+      {/* ── Section 1: Clinic basics ── */}
+      <div className="clinic-form__section">
+        <p className="clinic-form__eyebrow">Clinic basics</p>
+
         <label>
-          Clinic name
+          Clinic name <span className="required">*</span>
           <input
             name="name"
             value={formState.name}
             onChange={handleChange}
-            placeholder="Tacoma Smiles Dental"
+            placeholder="e.g. Tacoma Smiles Dental"
             required
           />
         </label>
-        <label>
-          Primary specialty
+
+        <div className="form__row">
+          <label>
+            Specialty <span className="required">*</span>
+            <select
+              name="primarySpecialty"
+              value={formState.primarySpecialty}
+              onChange={handleChange}
+              required
+            >
+              {PRIMARY_SPECIALTIES.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status
+            <select
+              name="shadowingStatus"
+              value={formState.shadowingStatus}
+              onChange={handleChange}
+            >
+              {statusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+          <span style={{ fontWeight: 600, fontSize: "0.875rem", flexShrink: 0 }}>Sub-category</span>
           <select
-            name="primarySpecialty"
-            value={formState.primarySpecialty}
+            name="secondaryFilter"
+            value={formState.secondaryFilter}
             onChange={handleChange}
-            required
+            style={{ flex: 1 }}
           >
-            {PRIMARY_SPECIALTIES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Shadowing status
-          <select
-            name="shadowingStatus"
-            value={formState.shadowingStatus}
-            onChange={handleChange}
-          >
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+            <option value="all">None</option>
+            {SECONDARY_FILTERS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </label>
       </div>
 
-      <label>
-        Secondary filter (optional)
-        <select
-          name="secondaryFilter"
-          value={formState.secondaryFilter}
-          onChange={handleChange}
-        >
-          <option value="all">None</option>
-          {SECONDARY_FILTERS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* ── Section 2: Location search ── */}
+      <div className="clinic-form__section">
+        <p className="clinic-form__eyebrow">Find location</p>
 
-      <label>
-        Search clinic (auto-fill)
-        <div className="inline-input">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search by clinic name or address"
-          />
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleSearch}
-            disabled={searchStatus === "loading"}
-          >
-            {searchStatus === "loading" ? "Searching..." : "Search"}
-          </button>
-        </div>
-        {searchError ? <p className="muted small">{searchError}</p> : null}
-        {searchResults.length > 0 ? (
-          <div className="search-results">
-            {searchResults.map((result) => (
-              <button
-                key={result.place_id}
-                type="button"
-                className="search-results__item"
-                onClick={() => handleSelectResult(result)}
-              >
-                <strong>{result.name ?? result.display_name.split(",")[0]}</strong>
-                <span className="muted small">{result.display_name}</span>
-              </button>
-            ))}
+        <div className="clinic-form__search-wrap">
+          <div className="inline-input">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search clinic name or address…"
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearch())}
+            />
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleSearch}
+              disabled={searchStatus === "loading"}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {searchStatus === "loading" ? "…" : "Search"}
+            </button>
           </div>
-        ) : null}
-        <p className="muted small">
-          Choose a result to auto-fill address and coordinates.
-        </p>
-      </label>
+          {searchError && <p className="muted small" style={{ color: "var(--danger)", margin: 0 }}>{searchError}</p>}
+          {searchResults.length > 0 && (
+            <div className="search-results" style={{ marginTop: 0 }}>
+              {searchResults.map((result) => (
+                <button
+                  key={result.place_id}
+                  type="button"
+                  className="search-results__item"
+                  onClick={() => handleSelectResult(result)}
+                >
+                  <strong>{result.name ?? result.display_name.split(",")[0]}</strong>
+                  <span className="muted small">{result.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="clinic-form__search-hint">
+            Select a result to auto-fill address &amp; map coordinates.
+          </p>
+        </div>
 
-      <label>
-        Address
-        <input
-          name="address"
-          value={formState.address}
-          onChange={handleChange}
-          placeholder="Street, City, State"
-          required
-        />
-      </label>
+        <label>
+          Address <span className="required">*</span>
+          <input
+            name="address"
+            value={formState.address}
+            onChange={handleChange}
+            placeholder="Street, City, State"
+            required
+          />
+        </label>
 
-      <label>
-        Email address
-        <input
-          type="email"
-          name="email"
-          value={formState.email}
-          onChange={handleChange}
-          placeholder="clinic@example.com"
-        />
-      </label>
+        <div className="form__row">
+          <label>
+            ZIP code
+            <input
+              name="zip"
+              value={formState.zip}
+              onChange={handleChange}
+              placeholder="98402"
+            />
+          </label>
+          <div />
+        </div>
+      </div>
 
-      <label>
-        Phone number
-        <input
-          name="phone"
-          value={formState.phone}
-          onChange={handleChange}
-          placeholder="(000) 123-4567"
-        />
-      </label>
+      {/* ── Section 3: Contact info ── */}
+      <div className="clinic-form__section">
+        <p className="clinic-form__eyebrow">Contact info</p>
 
-      <label>
-        ZIP code
-        <input
-          name="zip"
-          value={formState.zip}
-          onChange={handleChange}
-          placeholder="98402"
-        />
-      </label>
+        <div className="form__row">
+          <label>
+            Phone
+            <input
+              name="phone"
+              value={formState.phone}
+              onChange={handleChange}
+              placeholder="(253) 555-0100"
+            />
+          </label>
+          <label>
+            Email
+            <input
+              type="email"
+              name="email"
+              value={formState.email}
+              onChange={handleChange}
+              placeholder="clinic@example.com"
+            />
+          </label>
+        </div>
 
-      <label>
-        Notes
-        <textarea
-          name="notes"
-          value={formState.notes}
-          onChange={handleChange}
-          placeholder="Any details about scheduling or contact info"
-          rows={3}
-        />
-      </label>
+        <label>
+          Notes
+          <textarea
+            name="notes"
+            value={formState.notes}
+            onChange={handleChange}
+            placeholder="Scheduling preferences, contact tips…"
+            rows={2}
+          />
+        </label>
+      </div>
 
-      {submitError && (
-        <p className="muted small" style={{ color: "#b45309", background: "#fef9c3", borderRadius: "10px", padding: "0.5rem 0.75rem" }}>
-          {submitError}
-        </p>
-      )}
-      <button className="primary-button" type="submit">
-        Save clinic
-      </button>
+      {/* ── Submit ── */}
+      <div style={{ paddingTop: "1rem" }}>
+        {submitError && (
+          <p style={{
+            fontSize: "0.82rem",
+            color: "#92400e",
+            background: "#fef3c7",
+            border: "1px solid #fde68a",
+            borderRadius: "var(--r)",
+            padding: "0.55rem 0.75rem",
+            marginBottom: "0.75rem",
+            lineHeight: 1.5
+          }}>
+            {submitError}
+          </p>
+        )}
+        <button className="primary-button" type="submit" style={{ width: "100%", justifyContent: "center" }}>
+          Save clinic
+        </button>
+      </div>
+
     </form>
   );
 }
