@@ -771,6 +771,16 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   color: var(--accent);
   background: rgba(37,99,235,0.05);
 }
+.guide-nav__btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.guide-nav__btn--active:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
 
 .guide-content {
   display: flex;
