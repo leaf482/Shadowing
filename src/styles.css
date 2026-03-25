@@ -331,12 +331,19 @@ a { color: var(--accent); }
 }
 
 label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+  display: block;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
+}
+label > input,
+label > select,
+label > textarea,
+label > .inline-input,
+label > .search-results,
+label > p,
+label > div {
+  margin-top: 0.3rem;
 }
 
 input,
