@@ -602,7 +602,7 @@ app.post("/api/experiences", async (req, res) => {
       supervisor_first_name, supervisor_last_name, supervisor_title, supervisor_phone, supervisor_email,
       hours, date_start, date_end, notes, description, avg_weekly_hours, number_of_weeks,
       current_experience, status, title, type_compensated, type_academic_credit, type_volunteer
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       userId,
