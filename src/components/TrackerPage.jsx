@@ -183,19 +183,16 @@ export default function TrackerPage() {
     setSaveError("");
   };
 
-  const renderProjectList = (list, emptyMsg) => {
-    if (list.length === 0) {
-      return <p className="muted small" style={{ marginTop: "0.5rem" }}>{emptyMsg}</p>;
-    }
+  const renderProjectList = (list) => {
     return (
-      <ul className="tracker__items" style={{ marginTop: "0.75rem" }}>
+      <ul className="tracker__items">
         {list.map((p) => {
           const totalHours = p.sessions.reduce((sum, s) => sum + s.hours, 0);
           const isActive = activeProjectId === p.id;
           return (
             <li key={p.id} className="tracker__item">
               <div className="tracker__item-main">
-                <strong>{p.name}</strong>
+                <strong style={{ fontSize: "0.9rem" }}>{p.name}</strong>
                 {p.dateStart && (
                   <span className="tracker__item-type">{p.dateStart}</span>
                 )}
@@ -203,9 +200,8 @@ export default function TrackerPage() {
               </div>
               {(p.supervisorFirstName || p.supervisorLastName) && (
                 <div className="tracker__item-details muted small">
-                  {`Supervisor: ${p.supervisorFirstName ?? ""} ${p.supervisorLastName ?? ""}`.trim()}
+                  {[p.supervisorFirstName, p.supervisorLastName].filter(Boolean).join(" ")}
                   {p.supervisorPhone && ` · ${p.supervisorPhone}`}
-                  {p.supervisorEmail && ` · ${p.supervisorEmail}`}
                 </div>
               )}
               <div className="tracker__item-actions">
@@ -214,7 +210,9 @@ export default function TrackerPage() {
                   className="text-button"
                   onClick={() => setActiveProjectId(isActive ? null : p.id)}
                 >
-                  {isActive ? "Hide" : `Sessions (${p.sessions.length})`}
+                  {isActive
+                    ? "▲ Hide"
+                    : `▼ Sessions${p.sessions.length > 0 ? ` (${p.sessions.length})` : ""}`}
                 </button>
                 <button
                   type="button"
@@ -228,34 +226,32 @@ export default function TrackerPage() {
               {isActive && (
                 <div style={{ marginTop: "0.5rem" }}>
                   {p.sessions.length === 0 ? (
-                    <p className="muted small">No sessions yet.</p>
+                    <p className="muted small" style={{ padding: "0.5rem 0" }}>No sessions yet — add one below.</p>
                   ) : (
-                    <ul className="tracker__items">
+                    <ul className="session-list">
                       {p.sessions.map((s) => (
-                        <li key={s.id} className="tracker__item tracker__item--nested">
-                          <div className="tracker__item-main">
-                            <span>{s.date || "No date"}</span>
-                            <span className="tracker__item-hours">{s.hours}h</span>
-                          </div>
-                          {s.notes && <div className="muted small">{s.notes}</div>}
-                          <div className="tracker__item-actions">
-                            <button
-                              type="button"
-                              className="text-button"
-                              onClick={() => handleDeleteSession(p.id, s.id)}
-                              style={{ color: "#dc2626" }}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                        <li key={s.id} className="session-item">
+                          <span className="session-item__date">{s.date || "—"}</span>
+                          {s.notes && <span className="session-item__notes">{s.notes}</span>}
+                          <span className="session-item__hours">{s.hours}h</span>
+                          <button
+                            type="button"
+                            className="text-button text-button--danger"
+                            style={{ fontSize: "0.75rem" }}
+                            onClick={() => handleDeleteSession(p.id, s.id)}
+                          >
+                            ✕
+                          </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  <SessionForm
-                    onSubmit={(payload) => handleAddSession(p.id, payload)}
-                    onCancel={() => setActiveProjectId(null)}
-                  />
+                  <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border)" }}>
+                    <SessionForm
+                      onSubmit={(payload) => handleAddSession(p.id, payload)}
+                      onCancel={() => setActiveProjectId(null)}
+                    />
+                  </div>
                 </div>
               )}
             </li>
@@ -314,32 +310,62 @@ export default function TrackerPage() {
 
       {/* Three side-by-side add buttons */}
       <div className="tracker__add-actions">
+        {/* Shadowing — Blue */}
         <button
           type="button"
-          className={`tracker__add-btn${activeForm === "shadowing" ? " is-active" : ""}`}
+          className={`tracker__add-btn tracker__add-btn--shadowing${activeForm === "shadowing" ? " is-active" : ""}`}
           onClick={() => toggleActiveForm("shadowing")}
         >
-          <span className="tracker__add-icon">+</span>
-          Add Shadowing Experience
-          <span className="tracker__add-label">Log a dental shadowing clinic</span>
+          <span className="tracker__add-icon">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+              <circle cx="11" cy="8" r="4" opacity="0.25"/>
+              <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7" opacity="0.25"/>
+              <rect x="10" y="4" width="2" height="8" rx="1"/>
+              <rect x="7" y="6.5" width="8" height="2" rx="1"/>
+            </svg>
+          </span>
+          <span className="tracker__add-btn-text">
+            <span className="tracker__add-btn-title">Add Shadowing</span>
+            <span className="tracker__add-label">Log a dental shadowing clinic</span>
+          </span>
         </button>
+
+        {/* AADSAS — Purple */}
         <button
           type="button"
-          className={`tracker__add-btn${activeForm === "aadsas" ? " is-active" : ""}`}
+          className={`tracker__add-btn tracker__add-btn--aadsas${activeForm === "aadsas" ? " is-active" : ""}`}
           onClick={() => toggleActiveForm("aadsas")}
         >
-          <span className="tracker__add-icon">+</span>
-          Add AADSAS Experience
-          <span className="tracker__add-label">Full ADEA AADSAS format entry</span>
+          <span className="tracker__add-icon">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+              <rect x="4" y="2" width="14" height="18" rx="2" opacity="0.2"/>
+              <rect x="4" y="2" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+              <rect x="7" y="7" width="8" height="1.5" rx="0.75"/>
+              <rect x="7" y="10.5" width="8" height="1.5" rx="0.75"/>
+              <rect x="7" y="14" width="5" height="1.5" rx="0.75"/>
+            </svg>
+          </span>
+          <span className="tracker__add-btn-text">
+            <span className="tracker__add-btn-title">Add AADSAS Entry</span>
+            <span className="tracker__add-label">ADEA application format</span>
+          </span>
         </button>
+
+        {/* Volunteering — Green */}
         <button
           type="button"
-          className={`tracker__add-btn${activeForm === "volunteering" ? " is-active" : ""}`}
+          className={`tracker__add-btn tracker__add-btn--volunteering${activeForm === "volunteering" ? " is-active" : ""}`}
           onClick={() => toggleActiveForm("volunteering")}
         >
-          <span className="tracker__add-icon">+</span>
-          Add Volunteering Experience
-          <span className="tracker__add-label">Log a volunteer placement</span>
+          <span className="tracker__add-icon">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+              <path d="M11 19s-8-5-8-10a5 5 0 0110 0 5 5 0 0110 0c0 5-8 10-8 10z"/>
+            </svg>
+          </span>
+          <span className="tracker__add-btn-text">
+            <span className="tracker__add-btn-title">Add Volunteering</span>
+            <span className="tracker__add-label">Log a volunteer placement</span>
+          </span>
         </button>
       </div>
 
@@ -394,77 +420,141 @@ export default function TrackerPage() {
 
       {/* Projects: shadowing + volunteering side by side */}
       <div className="tracker__section-grid">
-        <div className="card">
+        {/* Shadowing */}
+        <div className="card tracker__section--shadowing">
           <div className="tracker__clinic-header">
-            <div>
-              <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Dental shadowing</p>
-              <h3 style={{ margin: 0 }}>Shadowing projects</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <span className="section-badge section-badge--shadowing">Shadowing</span>
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>Dental Projects</h3>
             </div>
-            <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
+            <span style={{
+              fontWeight: 700, color: "#1d4ed8", fontSize: "0.9rem",
+              background: "#dbeafe", padding: "0.2rem 0.65rem", borderRadius: "999px"
+            }}>
               {shadowingHours.toFixed(1)}h
             </span>
           </div>
-          <p className="muted small" style={{ marginBottom: "0.75rem" }}>Click a project to log sessions and view reflections.</p>
-          {renderProjectList(shadowingProjects, "No shadowing projects yet. Click \"Add Shadowing Experience\" above.")}
+          <p className="muted small" style={{ marginBottom: "0.75rem" }}>
+            Click a project to log sessions and view notes.
+          </p>
+          {shadowingProjects.length === 0 ? (
+            <div className="tracker__empty">
+              <div className="tracker__empty-icon tracker__empty-icon--shadowing">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+                  <rect x="10" y="4" width="2" height="8" rx="1"/>
+                  <rect x="7" y="6.5" width="8" height="2" rx="1"/>
+                  <circle cx="11" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                </svg>
+              </div>
+              <p className="tracker__empty-title">No shadowing clinics yet</p>
+              <p className="tracker__empty-sub">Click "Add Shadowing" above to log your first clinic</p>
+            </div>
+          ) : (
+            renderProjectList(shadowingProjects)
+          )}
         </div>
 
-        <div className="card">
+        {/* Volunteering */}
+        <div className="card tracker__section--volunteering">
           <div className="tracker__clinic-header">
-            <div>
-              <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Community service</p>
-              <h3 style={{ margin: 0 }}>Volunteering projects</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <span className="section-badge section-badge--volunteering">Volunteer</span>
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>Community Service</h3>
             </div>
-            <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
+            <span style={{
+              fontWeight: 700, color: "#047857", fontSize: "0.9rem",
+              background: "#d1fae5", padding: "0.2rem 0.65rem", borderRadius: "999px"
+            }}>
               {volunteerHours.toFixed(1)}h
             </span>
           </div>
-          <p className="muted small" style={{ marginBottom: "0.75rem" }}>Click a project to log sessions and view reflections.</p>
-          {renderProjectList(volunteerProjects, "No volunteering projects yet. Click \"Add Volunteering Experience\" above.")}
+          <p className="muted small" style={{ marginBottom: "0.75rem" }}>
+            Click a project to log sessions and view notes.
+          </p>
+          {volunteerProjects.length === 0 ? (
+            <div className="tracker__empty">
+              <div className="tracker__empty-icon tracker__empty-icon--volunteering">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+                  <path d="M11 19s-8-5-8-10a5 5 0 0110 0 5 5 0 0110 0c0 5-8 10-8 10z"/>
+                </svg>
+              </div>
+              <p className="tracker__empty-title">No volunteer placements yet</p>
+              <p className="tracker__empty-sub">Click "Add Volunteering" above to log your first placement</p>
+            </div>
+          ) : (
+            renderProjectList(volunteerProjects)
+          )}
         </div>
       </div>
 
-      {/* AADSAS Experiences */}
-      <div className="card">
+      {/* AADSAS Experiences — full width, purple accent */}
+      <div className="card tracker__section--aadsas">
         <div className="tracker__clinic-header">
-          <div>
-            <p className="eyebrow" style={{ marginBottom: "0.1rem" }}>Dental school application</p>
-            <h3 style={{ margin: 0 }}>AADSAS experiences</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <span className="section-badge section-badge--aadsas">AADSAS</span>
+            <h3 style={{ margin: 0, fontSize: "1rem" }}>Application Entries</h3>
           </div>
-          <span className="muted small">{experiences.length} saved</span>
+          <span style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>
+            {experiences.length} saved
+          </span>
         </div>
-        <p className="muted small" style={{ marginBottom: "0.75rem" }}>Long-form ADEA AADSAS entries ready to copy into your application.</p>
+        <p className="muted small" style={{ marginBottom: "0.75rem" }}>
+          Long-form ADEA AADSAS entries ready to copy into your dental school application.
+        </p>
 
         {experiences.length === 0 ? (
-          <p className="muted small" style={{ marginTop: "0.75rem" }}>
-            No AADSAS entries yet. Click "Add AADSAS Experience" above to create one.
-          </p>
+          <div className="tracker__empty">
+            <div className="tracker__empty-icon tracker__empty-icon--aadsas">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="currentColor">
+                <rect x="4" y="2" width="14" height="18" rx="2" opacity="0.2"/>
+                <rect x="4" y="2" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <rect x="7" y="7" width="8" height="1.5" rx="0.75"/>
+                <rect x="7" y="10.5" width="8" height="1.5" rx="0.75"/>
+                <rect x="7" y="14" width="5" height="1.5" rx="0.75"/>
+              </svg>
+            </div>
+            <p className="tracker__empty-title">No AADSAS entries yet</p>
+            <p className="tracker__empty-sub">Click "Add AADSAS Entry" above to create your first application entry</p>
+          </div>
         ) : (
-          <ul className="tracker__items" style={{ marginTop: "0.75rem" }}>
+          <ul className="tracker__items" style={{ marginTop: "0.25rem" }}>
             {experiences.map((exp) => {
               const isExpanded = expandedExpId === exp.id;
               const typeLabel = EXPERIENCE_TYPE_LABELS[exp.experienceType] ?? exp.experienceType;
+              const dateRange = [
+                exp.dateStart,
+                exp.dateEnd ? `→ ${exp.dateEnd}` : exp.currentExperience ? "→ Present" : ""
+              ].filter(Boolean).join(" ");
+
               return (
                 <li key={exp.id} className="tracker__exp-item">
                   <div className="tracker__exp-item-header">
-                    <strong>{exp.organizationName}</strong>
-                    <span className="tracker__item-type">{typeLabel}</span>
+                    <strong style={{ fontSize: "0.9rem" }}>{exp.organizationName}</strong>
+                    <span style={{
+                      fontSize: "0.72rem", fontWeight: 600,
+                      background: "#ede9fe", color: "#6d28d9",
+                      padding: "0.15rem 0.5rem", borderRadius: "999px"
+                    }}>{typeLabel}</span>
                     <span className="tracker__exp-item-hours">{exp.hours}h</span>
                   </div>
-                  {exp.title && <div className="muted small">{exp.title}</div>}
-                  <div className="muted small">
-                    {[exp.dateStart, exp.dateEnd ? `→ ${exp.dateEnd}` : exp.currentExperience ? "→ Present" : ""].filter(Boolean).join(" ")}
-                  </div>
+                  {(exp.title || dateRange) && (
+                    <div className="muted small" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                      {exp.title && <span>{exp.title}</span>}
+                      {dateRange && <span style={{ color: "var(--text-3)" }}>{dateRange}</span>}
+                    </div>
+                  )}
                   <div className="tracker__item-actions">
                     <button
                       type="button"
                       className="text-button"
                       onClick={() => setExpandedExpId(isExpanded ? null : exp.id)}
                     >
-                      {isExpanded ? "Collapse" : "View details"}
+                      {isExpanded ? "▲ Collapse" : "▼ Details"}
                     </button>
                     <button
                       type="button"
                       className="text-button"
+                      style={{ color: "#6d28d9" }}
                       onClick={() => {
                         setEditingExp(exp);
                         setActiveForm(null);
@@ -483,30 +573,42 @@ export default function TrackerPage() {
                     </button>
                   </div>
                   {isExpanded && (
-                    <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                      {exp.address && <div className="muted small">Address: {[exp.address, exp.city, exp.stateProvince].filter(Boolean).join(", ")}</div>}
+                    <div style={{
+                      marginTop: "0.75rem",
+                      padding: "0.85rem",
+                      background: "#faf9ff",
+                      borderRadius: "var(--r)",
+                      display: "flex", flexDirection: "column", gap: "0.5rem"
+                    }}>
+                      {exp.address && (
+                        <div className="muted small">
+                          <span className="label" style={{ display: "inline" }}>Address: </span>
+                          {[exp.address, exp.city, exp.stateProvince].filter(Boolean).join(", ")}
+                        </div>
+                      )}
                       {(exp.supervisorFirstName || exp.supervisorLastName) && (
                         <div className="muted small">
-                          Supervisor: {[exp.supervisorFirstName, exp.supervisorLastName].filter(Boolean).join(" ")}
+                          <span className="label" style={{ display: "inline" }}>Supervisor: </span>
+                          {[exp.supervisorFirstName, exp.supervisorLastName].filter(Boolean).join(" ")}
                           {exp.supervisorTitle && `, ${exp.supervisorTitle}`}
                           {exp.supervisorEmail && ` · ${exp.supervisorEmail}`}
                         </div>
                       )}
                       {exp.avgWeeklyHours != null && (
                         <div className="muted small">
-                          {exp.avgWeeklyHours}h/week × {exp.numberOfWeeks} weeks = {exp.hours}h total
+                          {exp.avgWeeklyHours}h/week × {exp.numberOfWeeks} weeks = <strong>{exp.hours}h</strong>
                         </div>
                       )}
                       {exp.description && (
-                        <div style={{ marginTop: "0.35rem" }}>
-                          <p className="label">Description</p>
-                          <p style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>{exp.description}</p>
+                        <div>
+                          <p className="label" style={{ marginBottom: "0.2rem" }}>Description</p>
+                          <p style={{ fontSize: "0.875rem", lineHeight: 1.65, margin: 0 }}>{exp.description}</p>
                         </div>
                       )}
                       {exp.notes && (
                         <div>
-                          <p className="label">Notes</p>
-                          <p className="muted small">{exp.notes}</p>
+                          <p className="label" style={{ marginBottom: "0.2rem" }}>Notes</p>
+                          <p className="muted small" style={{ margin: 0 }}>{exp.notes}</p>
                         </div>
                       )}
                     </div>
