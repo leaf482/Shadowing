@@ -28,6 +28,12 @@ export default function LoginPage({ onSuccess, onBack }) {
     setResendTimerId(timerId);
   };
 
+  const toErrorMessage = (data, fallback) => {
+    const message = data?.error || fallback;
+    if (data?.requestId) return `${message} (Ref: ${data.requestId})`;
+    return message;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -55,7 +61,7 @@ export default function LoginPage({ onSuccess, onBack }) {
         });
         const registerData = await registerRes.json().catch(() => ({}));
         if (!registerRes.ok) {
-          setError(registerData.error || "Could not create account.");
+          setError(toErrorMessage(registerData, "Could not create account."));
           setSubmitting(false);
           return;
         }
@@ -89,8 +95,8 @@ export default function LoginPage({ onSuccess, onBack }) {
       }
 
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Invalid email or password.");
+        const data = await res.json().catch(() => ({}));
+        setError(toErrorMessage(data, "Invalid email or password."));
         setSubmitting(false);
         return;
       }
@@ -120,7 +126,7 @@ export default function LoginPage({ onSuccess, onBack }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Invalid code. Please try again.");
+        setError(toErrorMessage(data, "Invalid code. Please try again."));
         setSubmitting(false);
         return;
       }
@@ -146,7 +152,7 @@ export default function LoginPage({ onSuccess, onBack }) {
         if (res.status === 429) {
           startResendCooldown(data.retryAfterSeconds || 60);
         }
-        setError(data.error || "Could not resend code. Please try again.");
+        setError(toErrorMessage(data, "Could not resend code. Please try again."));
       }
     } catch {
       setError("Could not connect to server. Please try again.");

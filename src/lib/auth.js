@@ -63,7 +63,14 @@ export async function authFetch(url, options = {}) {
   });
 
   if (response.status === 401 && !skipAuthRedirect) {
-    setAuthNotice("Your session expired. Please sign in again.");
+    let requestId = response.headers.get("x-request-id") || "";
+    try {
+      const data = await response.clone().json();
+      if (data?.requestId) requestId = data.requestId;
+    } catch {}
+
+    const suffix = requestId ? ` (Ref: ${requestId})` : "";
+    setAuthNotice(`Your session expired. Please sign in again.${suffix}`);
     await clearSession();
     window.location.hash = "login";
     window.location.reload();
