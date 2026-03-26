@@ -92,6 +92,20 @@ RESEND_API_KEY=your_resend_api_key
 
 # Optional clinic lock period override (defaults to 14, clamped to 14-21)
 COOLDOWN_DAYS=14
+
+# Optional auth/session tuning
+SESSION_TTL_MS=604800000
+SESSION_REFRESH_THRESHOLD_MS=86400000
+LOGIN_RATE_WINDOW_MS=600000
+LOGIN_MAX_ATTEMPTS_PER_IP=10
+LOGIN_MAX_ATTEMPTS_PER_ACCOUNT=10
+VERIFICATION_TTL_MS=600000
+VERIFICATION_RESEND_COOLDOWN_MS=60000
+VERIFICATION_MAX_ATTEMPTS=5
+VERIFICATION_LOCK_MS=600000
+
+# Set to false to disable auth event logs
+AUTH_LOGGING_ENABLED=true
 ```
 
 Notes:
@@ -99,6 +113,7 @@ Notes:
 - `NODE_ENV=production` enables the `Secure` flag on the session cookie.
 - Session cookies are `HttpOnly`, `SameSite=Lax`, and expire in 7 days.
 - If `RESEND_API_KEY` is not set, verification codes are still generated server-side but email delivery is skipped.
+- Each request is assigned an `X-Request-Id` (or reuses proxy-provided one) to correlate auth logs across systems.
 
 ---
 

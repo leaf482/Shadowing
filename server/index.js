@@ -12,20 +12,65 @@ const __dirname = dirname(__filename);
 const PORT = process.env.PORT || 3000;
 // Resolved relative to this file's directory — works regardless of cwd
 const DB_PATH = process.env.SQLITE_PATH || join(__dirname, "shadowing.db");
+
+function envInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 const COOLDOWN_DAYS = Math.min(21, Math.max(14, parseInt(process.env.COOLDOWN_DAYS, 10) || 14));
-const VERIFICATION_TTL_MS = 10 * 60 * 1000;
-const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
-const VERIFICATION_MAX_ATTEMPTS = 5;
-const VERIFICATION_LOCK_MS = 10 * 60 * 1000;
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const SESSION_REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const VERIFICATION_TTL_MS = clamp(envInt("VERIFICATION_TTL_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
+const VERIFICATION_RESEND_COOLDOWN_MS = clamp(envInt("VERIFICATION_RESEND_COOLDOWN_MS", 60 * 1000), 10 * 1000, 10 * 60 * 1000);
+const VERIFICATION_MAX_ATTEMPTS = clamp(envInt("VERIFICATION_MAX_ATTEMPTS", 5), 3, 10);
+const VERIFICATION_LOCK_MS = clamp(envInt("VERIFICATION_LOCK_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
+const SESSION_TTL_MS = clamp(envInt("SESSION_TTL_MS", 7 * 24 * 60 * 60 * 1000), 60 * 60 * 1000, 30 * 24 * 60 * 60 * 1000);
+const SESSION_REFRESH_THRESHOLD_MS = clamp(
+  envInt("SESSION_REFRESH_THRESHOLD_MS", 24 * 60 * 60 * 1000),
+  5 * 60 * 1000,
+  SESSION_TTL_MS
+);
 const SESSION_COOKIE_NAME = "shadowing_session";
-const LOGIN_RATE_WINDOW_MS = 10 * 60 * 1000;
-const LOGIN_MAX_ATTEMPTS_PER_IP = 10;
-const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 10;
+const LOGIN_RATE_WINDOW_MS = clamp(envInt("LOGIN_RATE_WINDOW_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
+const LOGIN_MAX_ATTEMPTS_PER_IP = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_IP", 10), 3, 100);
+const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_ACCOUNT", 10), 3, 100);
+const AUTH_LOGGING_ENABLED = process.env.AUTH_LOGGING_ENABLED !== "false";
 
 const loginAttemptsByIp = new Map();
 const loginAttemptsByAccount = new Map();
+
+function maskEmail(email) {
+  if (!email || !email.includes("@")) return "unknown";
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) return "unknown";
+  const safeLocal = localPart.length <= 2
+    ? `${localPart[0] || "*"}*`
+    : `${localPart.slice(0, 2)}***`;
+  return `${safeLocal}@${domain}`;
+}
+
+function logAuthEvent(event, details = {}) {
+  if (!AUTH_LOGGING_ENABLED) return;
+  const payload = { event, at: new Date().toISOString(), ...details };
+  console.info("[auth]", JSON.stringify(payload));
+}
+
+function authRequestMeta(req, details = {}) {
+  return {
+    requestId: req.requestId || "unknown",
+    ip: req.ip || "unknown",
+    ...details,
+  };
+}
+
+function logAuthEventForRequest(req, event, details = {}) {
+  logAuthEvent(event, authRequestMeta(req, details));
+}
 
 function isRateLimited(store, key, maxAttempts, windowMs, now = Date.now()) {
   const entry = store.get(key);
@@ -49,6 +94,15 @@ function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
 
 const app = express();
 app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  const inboundId = req.headers["x-request-id"];
+  const requestId = typeof inboundId === "string" && inboundId.trim()
+    ? inboundId.trim()
+    : randomUUID();
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  next();
+});
 app.use(express.json());
 app.use(express.static(join(__dirname, "../dist")));
 
@@ -1072,6 +1126,7 @@ app.post("/api/auth/register", async (req, res) => {
   const normalizedEmail = email.trim().toLowerCase();
   const existing = await db.get("select email from users where email = ?", [normalizedEmail]);
   if (existing) {
+    logAuthEventForRequest(req, "register_conflict", { email: maskEmail(normalizedEmail) });
     res.status(409).json({ error: "An account with this email already exists." });
     return;
   }
@@ -1081,6 +1136,8 @@ app.post("/api/auth/register", async (req, res) => {
     "insert into users (email, password_hash) values (?, ?)",
     [normalizedEmail, passwordHash]
   );
+
+  logAuthEventForRequest(req, "register_success", { email: maskEmail(normalizedEmail) });
 
   res.status(201).json({ email: normalizedEmail });
 });
@@ -1105,6 +1162,7 @@ app.post("/api/auth/login", async (req, res) => {
     isRateLimited(loginAttemptsByIp, ipKey, LOGIN_MAX_ATTEMPTS_PER_IP, LOGIN_RATE_WINDOW_MS, now) ||
     isRateLimited(loginAttemptsByAccount, normalizedEmail, LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, LOGIN_RATE_WINDOW_MS, now)
   ) {
+    logAuthEventForRequest(req, "login_rate_limited", { email: maskEmail(normalizedEmail) });
     res.status(429).json({ error: "Too many login attempts. Try again in 10 minutes." });
     return;
   }
@@ -1117,6 +1175,7 @@ app.post("/api/auth/login", async (req, res) => {
   if (!user || !verifyPassword(password, user.password_hash)) {
     recordFailedAttempt(loginAttemptsByIp, ipKey, LOGIN_RATE_WINDOW_MS, now);
     recordFailedAttempt(loginAttemptsByAccount, normalizedEmail, LOGIN_RATE_WINDOW_MS, now);
+    logAuthEventForRequest(req, "login_failed", { email: maskEmail(normalizedEmail) });
     res.status(401).json({ error: "Invalid email or password." });
     return;
   }
@@ -1125,11 +1184,13 @@ app.post("/api/auth/login", async (req, res) => {
 
   if (!user.is_verified) {
     await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
+    logAuthEventForRequest(req, "login_unverified", { email: maskEmail(normalizedEmail) });
     res.status(403).json({ error: "email_not_verified", email: normalizedEmail });
     return;
   }
 
   await issueSession(normalizedEmail, res);
+  logAuthEventForRequest(req, "login_success", { email: maskEmail(normalizedEmail) });
   res.json({ email: normalizedEmail });
 });
 
@@ -1139,6 +1200,7 @@ app.delete("/api/auth/logout", async (req, res) => {
     await db.run("delete from auth_sessions where token = ?", [token]);
   }
   clearSessionCookie(res);
+  logAuthEventForRequest(req, "logout", { hadSession: !!token });
   res.json({ ok: true });
 });
 
@@ -1227,12 +1289,14 @@ app.post("/api/auth/send-verification", async (req, res) => {
 
   // Always return a generic success envelope to avoid account enumeration.
   if (!user) {
+    logAuthEventForRequest(req, "verification_send_unknown_account", { email: maskEmail(normalizedEmail) });
     res.json({ ok: true });
     return;
   }
 
   const result = await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
   if (!result.sent && result.reason === "resend_cooldown") {
+    logAuthEventForRequest(req, "verification_send_cooldown", { email: maskEmail(normalizedEmail) });
     res.status(429).json({
       error: "Please wait before requesting another verification code.",
       retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000),
@@ -1240,6 +1304,7 @@ app.post("/api/auth/send-verification", async (req, res) => {
     return;
   }
 
+  logAuthEventForRequest(req, "verification_send", { email: maskEmail(normalizedEmail) });
   res.json({ ok: true });
 });
 
@@ -1257,6 +1322,7 @@ app.post("/api/auth/verify", async (req, res) => {
   );
 
   if (user?.verification_locked_until && new Date(user.verification_locked_until) > new Date()) {
+    logAuthEventForRequest(req, "verification_locked", { email: maskEmail(normalizedEmail) });
     res.status(429).json({ error: "Too many failed attempts. Please try again later." });
     return;
   }
@@ -1270,6 +1336,7 @@ app.post("/api/auth/verify", async (req, res) => {
           "update users set verification_attempts = ?, verification_locked_until = ? where email = ?",
           [nextAttempts, lockUntil, normalizedEmail]
         );
+        logAuthEventForRequest(req, "verification_locked_due_to_attempts", { email: maskEmail(normalizedEmail) });
       } else {
         await db.run(
           "update users set verification_attempts = ? where email = ?",
@@ -1277,10 +1344,12 @@ app.post("/api/auth/verify", async (req, res) => {
         );
       }
     }
+    logAuthEventForRequest(req, "verification_failed", { email: maskEmail(normalizedEmail) });
     res.status(400).json({ error: "Invalid verification code." });
     return;
   }
   if (new Date(user.verification_expires_at) < new Date()) {
+    logAuthEventForRequest(req, "verification_expired", { email: maskEmail(normalizedEmail) });
     res.status(400).json({ error: "Code has expired. Please request a new one." });
     return;
   }
@@ -1298,6 +1367,7 @@ app.post("/api/auth/verify", async (req, res) => {
   );
 
   await issueSession(normalizedEmail, res);
+  logAuthEventForRequest(req, "verification_success", { email: maskEmail(normalizedEmail) });
   res.json({ email: normalizedEmail });
 });
 
