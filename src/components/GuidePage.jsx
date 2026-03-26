@@ -172,14 +172,14 @@ const CONTENT = {
         <h3>Authentication &amp; Passwords</h3>
         <Ul items={[
           "Passwords are hashed using scrypt — never stored in plain text.",
-          "All sessions use server-issued tokens (not exposed email or user IDs).",
-          "Session tokens expire after 7 days and are invalidated on logout.",
+          "All sessions use server-issued HttpOnly cookies (email/user IDs are never used as auth credentials).",
+          "Session cookies expire after 7 days and are invalidated on logout.",
           "Login attempts are rate-limited: more than 10 failed attempts from a single IP within 10 minutes results in a temporary block.",
         ]} />
         <h3>Data Transmission</h3>
         <Ul items={[
           "All traffic is served over HTTPS (TLS encryption).",
-          "API requests use session token authentication over encrypted connections.",
+          "Authenticated API requests rely on secure server-side session cookies over encrypted connections.",
         ]} />
         <h3>Input Validation</h3>
         <Ul items={[
@@ -196,7 +196,7 @@ const CONTENT = {
         <h3>Access Control</h3>
         <Ul items={[
           "Only authenticated users with verified .edu emails may access the platform.",
-          "Write operations (adding/editing clinics, logging hours) require a valid session token.",
+          "Write operations (adding/editing clinics, logging hours) require a valid authenticated session cookie.",
           "Administrative actions are restricted to platform maintainers.",
         ]} />
       </>

@@ -18,9 +18,34 @@ const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 const VERIFICATION_MAX_ATTEMPTS = 5;
 const VERIFICATION_LOCK_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const SESSION_COOKIE_NAME = "shadowing_session";
+const LOGIN_RATE_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS_PER_IP = 10;
+const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 10;
 
-const loginAttempts = new Map();
+const loginAttemptsByIp = new Map();
+const loginAttemptsByAccount = new Map();
+
+function isRateLimited(store, key, maxAttempts, windowMs, now = Date.now()) {
+  const entry = store.get(key);
+  if (!entry) return false;
+  if (now - entry.windowStart > windowMs) {
+    store.delete(key);
+    return false;
+  }
+  return entry.count >= maxAttempts;
+}
+
+function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
+  const entry = store.get(key);
+  if (!entry || now - entry.windowStart > windowMs) {
+    store.set(key, { count: 1, windowStart: now });
+    return;
+  }
+  entry.count += 1;
+  store.set(key, entry);
+}
 
 const app = express();
 app.set("trust proxy", 1);
@@ -307,9 +332,6 @@ function parseCookies(req) {
 }
 
 function getSessionToken(req) {
-  const headerToken = req.headers["x-session-token"];
-  if (headerToken) return headerToken;
-
   const cookies = parseCookies(req);
   return cookies[SESSION_COOKIE_NAME] || null;
 }
@@ -354,6 +376,15 @@ async function getUserIdFromToken(req) {
   if (age > SESSION_TTL_MS) {
     await db.run("delete from auth_sessions where token = ?", [token]);
     return null;
+  }
+
+  // Sliding session: refresh active sessions at most once per threshold window.
+  if (age > SESSION_REFRESH_THRESHOLD_MS && req.res) {
+    await db.run(
+      "update auth_sessions set created_at = ? where token = ?",
+      [new Date().toISOString(), token]
+    );
+    setSessionCookie(req.res, token);
   }
 
   return row.user_id;
@@ -1055,22 +1086,6 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
-  const ip = req.ip;
-  const now = Date.now();
-  const attempts = loginAttempts.get(ip) || { count: 0, time: now };
-
-  if (now - attempts.time > 10 * 60 * 1000) {
-    attempts.count = 0;
-    attempts.time = now;
-  }
-  attempts.count += 1;
-  loginAttempts.set(ip, attempts);
-
-  if (attempts.count > 10) {
-    res.status(429).json({ error: "Too many login attempts. Try again in 10 minutes." });
-    return;
-  }
-
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
@@ -1082,16 +1097,31 @@ app.post("/api/auth/login", async (req, res) => {
     return;
   }
 
+  const now = Date.now();
+  const ipKey = `ip:${req.ip || "unknown"}`;
   const normalizedEmail = email.trim().toLowerCase();
+
+  if (
+    isRateLimited(loginAttemptsByIp, ipKey, LOGIN_MAX_ATTEMPTS_PER_IP, LOGIN_RATE_WINDOW_MS, now) ||
+    isRateLimited(loginAttemptsByAccount, normalizedEmail, LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, LOGIN_RATE_WINDOW_MS, now)
+  ) {
+    res.status(429).json({ error: "Too many login attempts. Try again in 10 minutes." });
+    return;
+  }
+
   const user = await db.get(
     "select email, password_hash, is_verified from users where email = ?",
     [normalizedEmail]
   );
 
   if (!user || !verifyPassword(password, user.password_hash)) {
+    recordFailedAttempt(loginAttemptsByIp, ipKey, LOGIN_RATE_WINDOW_MS, now);
+    recordFailedAttempt(loginAttemptsByAccount, normalizedEmail, LOGIN_RATE_WINDOW_MS, now);
     res.status(401).json({ error: "Invalid email or password." });
     return;
   }
+
+  loginAttemptsByAccount.delete(normalizedEmail);
 
   if (!user.is_verified) {
     await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { isUWEmail, setSession } from "../lib/auth.js";
+import { useEffect, useState } from "react";
+import { isUWEmail, setSession, consumeAuthNotice } from "../lib/auth.js";
 
 export default function LoginPage({ onSuccess, onBack }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
@@ -12,6 +12,11 @@ export default function LoginPage({ onSuccess, onBack }) {
   const [verifyCode, setVerifyCode] = useState("");
   const [resendCooldown, setResendCooldown] = useState(false);
   const [resendTimerId, setResendTimerId] = useState(null);
+
+  useEffect(() => {
+    const notice = consumeAuthNotice();
+    if (notice) setError(notice);
+  }, []);
 
   const startResendCooldown = (seconds) => {
     setResendCooldown(true);
@@ -91,7 +96,7 @@ export default function LoginPage({ onSuccess, onBack }) {
       }
 
       const data = await res.json();
-      setSession(trimmedEmail, data.token);
+      setSession(trimmedEmail);
       onSuccess();
     } catch {
       setError("Could not connect to server. Please try again.");
@@ -119,7 +124,7 @@ export default function LoginPage({ onSuccess, onBack }) {
         setSubmitting(false);
         return;
       }
-      setSession(pendingEmail, data.token);
+      setSession(pendingEmail);
       onSuccess();
     } catch {
       setError("Could not connect to server. Please try again.");

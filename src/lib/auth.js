@@ -1,5 +1,5 @@
 const EMAIL_KEY = "shadowing_verified_email";
-const TOKEN_KEY = "shadowing_session_token";
+const AUTH_NOTICE_KEY = "shadowing_auth_notice";
 
 export function isEduEmail(email) {
   if (!email || typeof email !== "string") return false;
@@ -20,23 +20,9 @@ export function getStoredEmail() {
   }
 }
 
-export function getStoredToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
-export function setSession(email, token) {
+export function setSession(email) {
   try {
     localStorage.setItem(EMAIL_KEY, email.trim().toLowerCase());
-    if (token) {
-      // Legacy token compatibility during migration away from localStorage auth.
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
     return true;
   } catch {
     return false;
@@ -46,19 +32,29 @@ export function setSession(email, token) {
 function clearLocalSessionStorage() {
   try {
     localStorage.removeItem(EMAIL_KEY);
-    localStorage.removeItem(TOKEN_KEY);
   } catch {}
+}
+
+function setAuthNotice(message) {
+  try {
+    sessionStorage.setItem(AUTH_NOTICE_KEY, message);
+  } catch {}
+}
+
+export function consumeAuthNotice() {
+  try {
+    const message = sessionStorage.getItem(AUTH_NOTICE_KEY);
+    if (message) {
+      sessionStorage.removeItem(AUTH_NOTICE_KEY);
+      return message;
+    }
+  } catch {}
+  return "";
 }
 
 export async function authFetch(url, options = {}) {
   const { skipAuthRedirect = false, ...init } = options;
   const headers = new Headers(init.headers || {});
-  const token = getStoredToken();
-
-  // Kept for a safe rollout. Server also accepts HttpOnly cookie sessions.
-  if (token && !headers.has("x-session-token")) {
-    headers.set("x-session-token", token);
-  }
 
   const response = await fetch(url, {
     ...init,
@@ -67,6 +63,7 @@ export async function authFetch(url, options = {}) {
   });
 
   if (response.status === 401 && !skipAuthRedirect) {
+    setAuthNotice("Your session expired. Please sign in again.");
     await clearSession();
     window.location.hash = "login";
     window.location.reload();
@@ -76,12 +73,9 @@ export async function authFetch(url, options = {}) {
 }
 
 export async function clearSession() {
-  const token = getStoredToken();
-  const headers = token ? { "x-session-token": token } : {};
   try {
     await fetch("/api/auth/logout", {
       method: "DELETE",
-      headers,
       credentials: "same-origin",
     });
   } catch {

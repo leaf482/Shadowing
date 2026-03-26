@@ -81,6 +81,25 @@ PORT=3000
 NODE_ENV=production
 ```
 
+Optional auth/email settings:
+
+```
+# Sender used for verification emails
+FROM_EMAIL=Shadow Network <noreply@shadowingnetwork.com>
+
+# Resend API key for verification email delivery
+RESEND_API_KEY=your_resend_api_key
+
+# Optional clinic lock period override (defaults to 14, clamped to 14-21)
+COOLDOWN_DAYS=14
+```
+
+Notes:
+
+- `NODE_ENV=production` enables the `Secure` flag on the session cookie.
+- Session cookies are `HttpOnly`, `SameSite=Lax`, and expire in 7 days.
+- If `RESEND_API_KEY` is not set, verification codes are still generated server-side but email delivery is skipped.
+
 ---
 
 ## 7. Start the Node server with PM2

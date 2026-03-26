@@ -1,15 +1,17 @@
-# Dental Shadowing Map (MVP)
+# Dental Shadowing Map
 
-This project is a simple, login-free MVP for a dental shadowing map near
-University of Washington Tacoma. It lets students view clinics, submit new
-clinics or updates, and store data in a local SQLite database.
+This project is a React + Express + SQLite web app for pre-dental students in
+the University of Washington Tacoma region. It includes an authenticated clinic
+directory, a shadowing tracker, and AADSAS-friendly export tooling.
 
 ## Features
 
 - Map centered on UW Tacoma with clinic pins
 - Status color coding (available / mixed / unavailable / pending)
-- Add Clinic or Suggest Update form
+- Verified `.edu` sign-in with email verification
+- Add Clinic or Suggest Update form (authenticated)
 - Clinic directory with ZIP + radius filters
+- Shadowing projects/sessions tracker with CSV export
 
 ## Tech Stack
 
@@ -49,4 +51,5 @@ SQLite database file:
 
 ## Notes
 
-- The API runs on `http://localhost:5174` and Vite proxies `/api`.
+- The API server runs on `http://localhost:3000` by default.
+- Vite dev server runs on `http://localhost:5173` and proxies `/api` to the API server.
