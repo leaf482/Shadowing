@@ -2,6 +2,7 @@ import { useState } from "react";
 import { isUWEmail, setSession } from "../lib/auth.js";
 
 export default function LoginPage({ onSuccess, onBack }) {
+  const [mode, setMode] = useState("login"); // "login" | "register"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -30,31 +31,36 @@ export default function LoginPage({ onSuccess, onBack }) {
 
     setSubmitting(true);
     try {
-      let res = await fetch("/api/auth/login", {
+      if (mode === "register") {
+        const registerRes = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail, password }),
+        });
+        const registerData = await registerRes.json().catch(() => ({}));
+        if (!registerRes.ok) {
+          setError(registerData.error || "Could not create account.");
+          setSubmitting(false);
+          return;
+        }
+
+        await fetch("/api/auth/send-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail }),
+        }).catch(() => {});
+
+        setPendingEmail(trimmedEmail);
+        setStep("verify");
+        setSubmitting(false);
+        return;
+      }
+
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmedEmail, password }),
       });
-
-      if (res.status === 401) {
-        // Account doesn't exist yet — auto-register then log in
-        const regRes = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmedEmail, password }),
-        });
-        if (!regRes.ok) {
-          const regErr = await regRes.json();
-          setError(regErr.error || "Could not create account.");
-          setSubmitting(false);
-          return;
-        }
-        res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmedEmail, password }),
-        });
-      }
 
       if (res.status === 403) {
         const data = await res.json();
@@ -176,7 +182,7 @@ export default function LoginPage({ onSuccess, onBack }) {
   return (
     <div className="login">
       <div className="login__inner card">
-        <h1 className="login__title">Sign in</h1>
+        <h1 className="login__title">{mode === "login" ? "Sign in" : "Create account"}</h1>
         <p className="login__subtitle muted">
           Use your university .edu email to access the clinic directory and shadowing tools.
         </p>
@@ -224,10 +230,27 @@ export default function LoginPage({ onSuccess, onBack }) {
               className="button button--primary"
               disabled={submitting}
             >
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting
+                ? mode === "login" ? "Signing in..." : "Creating account..."
+                : mode === "login" ? "Sign in" : "Create account"}
             </button>
           </div>
         </form>
+
+        <p className="muted small" style={{ marginTop: "0.9rem", textAlign: "center" }}>
+          {mode === "login" ? "Need an account? " : "Already have an account? "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setMode((prev) => (prev === "login" ? "register" : "login"));
+              setError("");
+            }}
+            disabled={submitting}
+          >
+            {mode === "login" ? "Create one" : "Sign in"}
+          </button>
+        </p>
       </div>
     </div>
   );
