@@ -187,6 +187,10 @@ export default function App() {
       <SideNav
         activePage={mainPage}
         onNavigate={handleNavigate}
+        onBrandClick={() => {
+          window.location.hash = "dashboard";
+          window.location.reload();
+        }}
         userEmail={getStoredEmail()}
         onLogout={async () => {
           await clearSession();

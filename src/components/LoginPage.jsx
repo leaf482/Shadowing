@@ -34,6 +34,12 @@ export default function LoginPage({ onSuccess, onBack }) {
     return message;
   };
 
+  const passwordChecks = {
+    minLength: password.length >= 8,
+    hasLetter: /[A-Za-z]/.test(password),
+    hasNumber: /\d/.test(password),
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -49,6 +55,13 @@ export default function LoginPage({ onSuccess, onBack }) {
     if (!password || password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
+    }
+
+    if (mode === "register") {
+      if (!passwordChecks.hasLetter || !passwordChecks.hasNumber) {
+        setError("Password must include both letters and numbers.");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -210,11 +223,44 @@ export default function LoginPage({ onSuccess, onBack }) {
   }
 
   return (
-    <div className="login">
+    <div className={`login ${mode === "register" ? "login--register" : ""}`}>
       <div className="login__inner card">
+        <div className="login__mode-switch" role="tablist" aria-label="Auth mode">
+          <button
+            type="button"
+            className={mode === "login" ? "login__mode-btn is-active" : "login__mode-btn"}
+            onClick={() => {
+              setMode("login");
+              setError("");
+            }}
+            disabled={submitting}
+            aria-selected={mode === "login"}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={mode === "register" ? "login__mode-btn is-active" : "login__mode-btn"}
+            onClick={() => {
+              setMode("register");
+              setError("");
+            }}
+            disabled={submitting}
+            aria-selected={mode === "register"}
+          >
+            Create account
+          </button>
+        </div>
+
+        {mode === "register" && (
+          <p className="login__mode-badge" aria-live="polite">New account setup</p>
+        )}
+
         <h1 className="login__title">{mode === "login" ? "Sign in" : "Create account"}</h1>
         <p className="login__subtitle muted">
-          Use your university .edu email to access the clinic directory and shadowing tools.
+          {mode === "login"
+            ? "Use your university .edu email to access the clinic directory and shadowing tools."
+            : "Create your Shadow Network account with a university .edu email. We'll send a verification code before first access."}
         </p>
 
         <form className="login__form" onSubmit={handleSubmit}>
@@ -241,6 +287,22 @@ export default function LoginPage({ onSuccess, onBack }) {
               className="login__input"
             />
           </label>
+          {mode === "register" && (
+            <ul className="login__password-checklist" aria-live="polite">
+              <li className={passwordChecks.minLength ? "is-valid" : ""}>
+                <span>{passwordChecks.minLength ? "✓" : "○"}</span>
+                At least 8 characters
+              </li>
+              <li className={passwordChecks.hasLetter ? "is-valid" : ""}>
+                <span>{passwordChecks.hasLetter ? "✓" : "○"}</span>
+                Includes a letter (A-Z)
+              </li>
+              <li className={passwordChecks.hasNumber ? "is-valid" : ""}>
+                <span>{passwordChecks.hasNumber ? "✓" : "○"}</span>
+                Includes a number (0-9)
+              </li>
+            </ul>
+          )}
           {error ? (
             <p className="login__error" role="alert">
               {error}

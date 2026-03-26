@@ -1126,6 +1126,10 @@ app.post("/api/auth/register", async (req, res) => {
     sendError(req, res, 400, "Password must be at least 8 characters.");
     return;
   }
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    sendError(req, res, 400, "Password must include both letters and numbers.");
+    return;
+  }
   if (password.length > 128) {
     sendError(req, res, 400, "Password is too long.");
     return;

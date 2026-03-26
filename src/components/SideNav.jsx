@@ -49,13 +49,18 @@ const NAV_ITEMS = [
   },
 ];
 
-export default function SideNav({ activePage, onNavigate, onLogout, userEmail }) {
+export default function SideNav({ activePage, onNavigate, onLogout, userEmail, onBrandClick }) {
   return (
     <aside className="nav">
-      <div className="nav__brand">
+      <button
+        type="button"
+        className="nav__brand"
+        onClick={onBrandClick}
+        aria-label="Go to dashboard and refresh"
+      >
         <img src={logoImg} alt="Shadow Network" className="nav__logo-img" />
         <span className="nav__beta">Beta</span>
-      </div>
+      </button>
 
       <div className="nav__bar">
         <nav className="nav__menu">
