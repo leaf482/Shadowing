@@ -21,6 +21,7 @@ export default function TrackerPage() {
   const [expandedExpId, setExpandedExpId] = useState(null);
   const [editingExp, setEditingExp] = useState(null); // experience object being edited
   const [saveError, setSaveError] = useState("");
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     loadProjects();
@@ -70,6 +71,7 @@ export default function TrackerPage() {
   };
 
   const handleCreateProject = async (payload) => {
+    setActionError("");
     const res = await authFetch("/api/projects", {
       method: "POST",
       headers: userHeaders(),
@@ -78,6 +80,8 @@ export default function TrackerPage() {
     if (res.ok) {
       await loadProjects();
       setActiveForm(null);
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to create project. Please try again."));
     }
   };
 
@@ -113,8 +117,12 @@ export default function TrackerPage() {
   };
 
   const handleExportAadsas = async () => {
+    setActionError("");
     const res = await authFetch("/api/export/aadsas?format=csv");
-    if (!res.ok) return;
+    if (!res.ok) {
+      setActionError(await formatApiErrorMessage(res, "Failed to export AADSAS CSV."));
+      return;
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -125,39 +133,59 @@ export default function TrackerPage() {
   };
 
   const handleAddSession = async (projectId, payload) => {
+    setActionError("");
     const res = await authFetch(`/api/projects/${projectId}/sessions`, {
       method: "POST",
       headers: userHeaders(),
       body: JSON.stringify(payload),
     });
-    if (res.ok) await loadProjects();
+    if (res.ok) {
+      await loadProjects();
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to add session. Please try again."));
+    }
   };
 
   const handleDeleteProject = async (projectId) => {
     if (!confirm("Delete this project and all its sessions? This cannot be undone.")) return;
+    setActionError("");
     const res = await authFetch(`/api/projects/${projectId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });
-    if (res.ok) await loadProjects();
+    if (res.ok) {
+      await loadProjects();
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to delete project."));
+    }
   };
 
   const handleDeleteSession = async (projectId, sessionId) => {
     if (!confirm("Delete this session?")) return;
+    setActionError("");
     const res = await authFetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });
-    if (res.ok) await loadProjects();
+    if (res.ok) {
+      await loadProjects();
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to delete session."));
+    }
   };
 
   const handleDeleteExperience = async (expId) => {
     if (!confirm("Delete this experience entry?")) return;
+    setActionError("");
     const res = await authFetch(`/api/experiences/${expId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });
-    if (res.ok) await loadExperiences();
+    if (res.ok) {
+      await loadExperiences();
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to delete experience."));
+    }
   };
 
   const toggleActiveForm = (type) => {
@@ -165,6 +193,7 @@ export default function TrackerPage() {
     setActiveProjectId(null);
     setEditingExp(null);
     setSaveError("");
+    setActionError("");
   };
 
   const renderProjectList = (list) => {
@@ -268,6 +297,12 @@ export default function TrackerPage() {
           </button>
         )}
       </div>
+
+      {actionError && (
+        <p className="muted small" style={{ color: "#dc2626", marginBottom: "0.85rem" }} role="alert">
+          {actionError}
+        </p>
+      )}
 
       {/* Stat cards */}
       <div className="stat-row">
