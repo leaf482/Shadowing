@@ -1360,6 +1360,23 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 }
 
 /* ── Hub panel (Add clinic) ──────────────────────────────── */
+.hub-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-panel--collapsed {
+  /* Match the height of map panel when collapsed to align with right side */
+  min-height: 640px;
+  justify-content: flex-start;
+}
+
+.hub-panel--expanded {
+  /* Allow natural height growth when expanded to show full form */
+  height: auto;
+  min-height: auto;
+}
+
 .hub-panel__header {
   display: flex;
   align-items: center;
@@ -1367,6 +1384,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   margin-bottom: 1rem;
   padding-bottom: 0.85rem;
   border-bottom: 1.5px solid var(--border-light);
+  flex-wrap: nowrap;
 }
 .hub-panel__icon {
   width: 36px;
