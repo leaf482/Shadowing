@@ -72,6 +72,14 @@ function logAuthEventForRequest(req, event, details = {}) {
   logAuthEvent(event, authRequestMeta(req, details));
 }
 
+function sendError(req, res, status, error, extra = {}) {
+  res.status(status).json({
+    error,
+    requestId: req.requestId || "unknown",
+    ...extra,
+  });
+}
+
 function isRateLimited(store, key, maxAttempts, windowMs, now = Date.now()) {
   const entry = store.get(key);
   if (!entry) return false;
@@ -1107,19 +1115,19 @@ app.post("/api/auth/register", async (req, res) => {
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
-    res.status(400).json({ error: "Email and password are required." });
+    sendError(req, res, 400, "Email and password are required.");
     return;
   }
   if (!isValidEduEmail(email)) {
-    res.status(400).json({ error: "A valid .edu email address is required." });
+    sendError(req, res, 400, "A valid .edu email address is required.");
     return;
   }
   if (typeof password !== "string" || password.length < 8) {
-    res.status(400).json({ error: "Password must be at least 8 characters." });
+    sendError(req, res, 400, "Password must be at least 8 characters.");
     return;
   }
   if (password.length > 128) {
-    res.status(400).json({ error: "Password is too long." });
+    sendError(req, res, 400, "Password is too long.");
     return;
   }
 
@@ -1127,7 +1135,7 @@ app.post("/api/auth/register", async (req, res) => {
   const existing = await db.get("select email from users where email = ?", [normalizedEmail]);
   if (existing) {
     logAuthEventForRequest(req, "register_conflict", { email: maskEmail(normalizedEmail) });
-    res.status(409).json({ error: "An account with this email already exists." });
+    sendError(req, res, 409, "An account with this email already exists.");
     return;
   }
 
@@ -1146,11 +1154,11 @@ app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
-    res.status(400).json({ error: "Email and password are required." });
+    sendError(req, res, 400, "Email and password are required.");
     return;
   }
   if (!isValidEduEmail(email)) {
-    res.status(400).json({ error: "A valid .edu email address is required." });
+    sendError(req, res, 400, "A valid .edu email address is required.");
     return;
   }
 
@@ -1163,7 +1171,7 @@ app.post("/api/auth/login", async (req, res) => {
     isRateLimited(loginAttemptsByAccount, normalizedEmail, LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, LOGIN_RATE_WINDOW_MS, now)
   ) {
     logAuthEventForRequest(req, "login_rate_limited", { email: maskEmail(normalizedEmail) });
-    res.status(429).json({ error: "Too many login attempts. Try again in 10 minutes." });
+    sendError(req, res, 429, "Too many login attempts. Try again in 10 minutes.");
     return;
   }
 
@@ -1176,7 +1184,7 @@ app.post("/api/auth/login", async (req, res) => {
     recordFailedAttempt(loginAttemptsByIp, ipKey, LOGIN_RATE_WINDOW_MS, now);
     recordFailedAttempt(loginAttemptsByAccount, normalizedEmail, LOGIN_RATE_WINDOW_MS, now);
     logAuthEventForRequest(req, "login_failed", { email: maskEmail(normalizedEmail) });
-    res.status(401).json({ error: "Invalid email or password." });
+    sendError(req, res, 401, "Invalid email or password.");
     return;
   }
 
@@ -1185,7 +1193,7 @@ app.post("/api/auth/login", async (req, res) => {
   if (!user.is_verified) {
     await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
     logAuthEventForRequest(req, "login_unverified", { email: maskEmail(normalizedEmail) });
-    res.status(403).json({ error: "email_not_verified", email: normalizedEmail });
+    sendError(req, res, 403, "email_not_verified", { email: normalizedEmail });
     return;
   }
 
@@ -1208,7 +1216,7 @@ app.get("/api/auth/session", async (req, res) => {
   const userId = await getUserIdFromToken(req);
   if (!userId) {
     clearSessionCookie(res);
-    res.status(401).json({ authenticated: false });
+    res.status(401).json({ authenticated: false, requestId: req.requestId || "unknown" });
     return;
   }
   res.json({ authenticated: true, email: userId });
@@ -1281,7 +1289,7 @@ async function sendVerificationCode(email, options = {}) {
 app.post("/api/auth/send-verification", async (req, res) => {
   const { email } = req.body ?? {};
   if (!email || !isValidEduEmail(email)) {
-    res.status(400).json({ error: "A valid .edu email is required." });
+    sendError(req, res, 400, "A valid .edu email is required.");
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
@@ -1297,10 +1305,13 @@ app.post("/api/auth/send-verification", async (req, res) => {
   const result = await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
   if (!result.sent && result.reason === "resend_cooldown") {
     logAuthEventForRequest(req, "verification_send_cooldown", { email: maskEmail(normalizedEmail) });
-    res.status(429).json({
-      error: "Please wait before requesting another verification code.",
-      retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000),
-    });
+    sendError(
+      req,
+      res,
+      429,
+      "Please wait before requesting another verification code.",
+      { retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000) }
+    );
     return;
   }
 
@@ -1311,7 +1322,7 @@ app.post("/api/auth/send-verification", async (req, res) => {
 app.post("/api/auth/verify", async (req, res) => {
   const { email, code } = req.body ?? {};
   if (!email || !code) {
-    res.status(400).json({ error: "Email and code are required." });
+    sendError(req, res, 400, "Email and code are required.");
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
@@ -1323,7 +1334,7 @@ app.post("/api/auth/verify", async (req, res) => {
 
   if (user?.verification_locked_until && new Date(user.verification_locked_until) > new Date()) {
     logAuthEventForRequest(req, "verification_locked", { email: maskEmail(normalizedEmail) });
-    res.status(429).json({ error: "Too many failed attempts. Please try again later." });
+    sendError(req, res, 429, "Too many failed attempts. Please try again later.");
     return;
   }
 
@@ -1345,12 +1356,12 @@ app.post("/api/auth/verify", async (req, res) => {
       }
     }
     logAuthEventForRequest(req, "verification_failed", { email: maskEmail(normalizedEmail) });
-    res.status(400).json({ error: "Invalid verification code." });
+    sendError(req, res, 400, "Invalid verification code.");
     return;
   }
   if (new Date(user.verification_expires_at) < new Date()) {
     logAuthEventForRequest(req, "verification_expired", { email: maskEmail(normalizedEmail) });
-    res.status(400).json({ error: "Code has expired. Please request a new one." });
+    sendError(req, res, 400, "Code has expired. Please request a new one.");
     return;
   }
 
