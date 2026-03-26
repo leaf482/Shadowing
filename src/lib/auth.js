@@ -31,31 +31,84 @@ export function getStoredToken() {
 export function setSession(email, token) {
   try {
     localStorage.setItem(EMAIL_KEY, email.trim().toLowerCase());
-    if (token) localStorage.setItem(TOKEN_KEY, token);
+    if (token) {
+      // Legacy token compatibility during migration away from localStorage auth.
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
     return true;
   } catch {
     return false;
   }
 }
 
-export async function clearSession() {
-  const token = getStoredToken();
-  if (token) {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "DELETE",
-        headers: { "x-session-token": token },
-      });
-    } catch {
-      // ignore network errors — local logout still proceeds
-    }
-  }
+function clearLocalSessionStorage() {
   try {
     localStorage.removeItem(EMAIL_KEY);
     localStorage.removeItem(TOKEN_KEY);
   } catch {}
 }
 
+export async function authFetch(url, options = {}) {
+  const { skipAuthRedirect = false, ...init } = options;
+  const headers = new Headers(init.headers || {});
+  const token = getStoredToken();
+
+  // Kept for a safe rollout. Server also accepts HttpOnly cookie sessions.
+  if (token && !headers.has("x-session-token")) {
+    headers.set("x-session-token", token);
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    credentials: "same-origin",
+  });
+
+  if (response.status === 401 && !skipAuthRedirect) {
+    await clearSession();
+    window.location.hash = "login";
+    window.location.reload();
+  }
+
+  return response;
+}
+
+export async function clearSession() {
+  const token = getStoredToken();
+  const headers = token ? { "x-session-token": token } : {};
+  try {
+    await fetch("/api/auth/logout", {
+      method: "DELETE",
+      headers,
+      credentials: "same-origin",
+    });
+  } catch {
+    // ignore network errors — local logout still proceeds
+  }
+  clearLocalSessionStorage();
+}
+
+export async function restoreSessionFromServer() {
+  try {
+    const res = await authFetch("/api/auth/session", { skipAuthRedirect: true });
+    if (!res.ok) {
+      clearLocalSessionStorage();
+      return false;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (data?.email) {
+      setSession(data.email);
+      return true;
+    }
+    clearLocalSessionStorage();
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function isAuthenticated() {
-  return !!getStoredToken();
+  return !!getStoredEmail();
 }

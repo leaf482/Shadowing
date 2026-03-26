@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import ProjectForm from "./ProjectForm.jsx";
 import SessionForm from "./SessionForm.jsx";
 import ExperienceForm from "./ExperienceForm.jsx";
-import { getStoredEmail, getStoredToken } from "../lib/auth.js";
+import { getStoredEmail, authFetch } from "../lib/auth.js";
 
 const EXPERIENCE_TYPE_LABELS = {
   dental_shadowing_in_person: "Dental Shadowing (In-Person)",
@@ -53,35 +53,24 @@ export default function TrackerPage() {
     [projects]
   );
 
-  const userHeaders = () => {
-    const token = getStoredToken();
-    return token
-      ? { "Content-Type": "application/json", "x-session-token": token }
-      : { "Content-Type": "application/json" };
-  };
+  const userHeaders = () => ({ "Content-Type": "application/json" });
 
   const loadProjects = async () => {
     try {
-      const token = getStoredToken();
-      const res = await fetch("/api/projects", {
-        headers: token ? { "x-session-token": token } : {},
-      });
+      const res = await authFetch("/api/projects");
       if (res.ok) setProjects(await res.json());
     } catch {}
   };
 
   const loadExperiences = async () => {
     try {
-      const token = getStoredToken();
-      const res = await fetch("/api/experiences", {
-        headers: token ? { "x-session-token": token } : {},
-      });
+      const res = await authFetch("/api/experiences");
       if (res.ok) setExperiences(await res.json());
     } catch {}
   };
 
   const handleCreateProject = async (payload) => {
-    const res = await fetch("/api/projects", {
+    const res = await authFetch("/api/projects", {
       method: "POST",
       headers: userHeaders(),
       body: JSON.stringify(payload),
@@ -94,7 +83,7 @@ export default function TrackerPage() {
 
   const handleSaveExperience = async (payload) => {
     setSaveError("");
-    const res = await fetch("/api/experiences", {
+    const res = await authFetch("/api/experiences", {
       method: "POST",
       headers: userHeaders(),
       body: JSON.stringify(payload),
@@ -111,7 +100,7 @@ export default function TrackerPage() {
   const handleUpdateExperience = async (payload) => {
     if (!editingExp) return;
     setSaveError("");
-    const res = await fetch(`/api/experiences/${editingExp.id}`, {
+    const res = await authFetch(`/api/experiences/${editingExp.id}`, {
       method: "PUT",
       headers: userHeaders(),
       body: JSON.stringify(payload),
@@ -126,10 +115,7 @@ export default function TrackerPage() {
   };
 
   const handleExportAadsas = async () => {
-    const token = getStoredToken();
-    const res = await fetch("/api/export/aadsas?format=csv", {
-      headers: token ? { "x-session-token": token } : {},
-    });
+    const res = await authFetch("/api/export/aadsas?format=csv");
     if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -141,7 +127,7 @@ export default function TrackerPage() {
   };
 
   const handleAddSession = async (projectId, payload) => {
-    const res = await fetch(`/api/projects/${projectId}/sessions`, {
+    const res = await authFetch(`/api/projects/${projectId}/sessions`, {
       method: "POST",
       headers: userHeaders(),
       body: JSON.stringify(payload),
@@ -151,7 +137,7 @@ export default function TrackerPage() {
 
   const handleDeleteProject = async (projectId) => {
     if (!confirm("Delete this project and all its sessions? This cannot be undone.")) return;
-    const res = await fetch(`/api/projects/${projectId}`, {
+    const res = await authFetch(`/api/projects/${projectId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });
@@ -160,7 +146,7 @@ export default function TrackerPage() {
 
   const handleDeleteSession = async (projectId, sessionId) => {
     if (!confirm("Delete this session?")) return;
-    const res = await fetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
+    const res = await authFetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });
@@ -169,7 +155,7 @@ export default function TrackerPage() {
 
   const handleDeleteExperience = async (expId) => {
     if (!confirm("Delete this experience entry?")) return;
-    const res = await fetch(`/api/experiences/${expId}`, {
+    const res = await authFetch(`/api/experiences/${expId}`, {
       method: "DELETE",
       headers: userHeaders(),
     });

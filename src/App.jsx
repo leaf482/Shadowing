@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
-import { isAuthenticated, clearSession, getStoredToken, getStoredEmail } from "./lib/auth.js";
+import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer } from "./lib/auth.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import MapPanel from "./components/MapPanel.jsx";
@@ -39,8 +39,20 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [activePage, setActivePage] = useState(parseHash());
+  const [authReady, setAuthReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
 
-  const authenticated = isAuthenticated();
+  useEffect(() => {
+    let active = true;
+    restoreSessionFromServer().then((hasSession) => {
+      if (!active) return;
+      setAuthenticated(hasSession);
+      setAuthReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -53,6 +65,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
     const page = parseHash();
     if (!authenticated) {
       if (MAIN_PAGES.includes(page)) {
@@ -63,7 +76,7 @@ export default function App() {
         window.location.hash = "dashboard";
       }
     }
-  }, [authenticated, activePage]);
+  }, [authReady, authenticated, activePage]);
 
   const handleNavigate = (page) => {
     window.location.hash = page;
@@ -74,8 +87,8 @@ export default function App() {
   };
 
   const handleLoginSuccess = () => {
+    setAuthenticated(true);
     window.location.hash = "dashboard";
-    window.location.reload();
   };
 
   const [zipFilter, setZipFilter] = useState("");
@@ -129,12 +142,10 @@ export default function App() {
       : "/api/clinics";
     const method = isUpdate ? "PUT" : "POST";
 
-    const token = getStoredToken();
-    const response = await fetch(endpoint, {
+    const response = await authFetch(endpoint, {
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { "x-session-token": token } : {}),
       },
       body: JSON.stringify(payload.proposed)
     });
@@ -154,6 +165,9 @@ export default function App() {
   );
 
   if (!authenticated) {
+    if (!authReady) {
+      return null;
+    }
     if (activePage === "login") {
       return (
         <LoginPage
@@ -175,8 +189,8 @@ export default function App() {
         userEmail={getStoredEmail()}
         onLogout={async () => {
           await clearSession();
+          setAuthenticated(false);
           window.location.hash = "intro";
-          window.location.reload();
         }}
       />
       <div className="content">

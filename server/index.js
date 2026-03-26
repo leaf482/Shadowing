@@ -13,6 +13,12 @@ const PORT = process.env.PORT || 3000;
 // Resolved relative to this file's directory — works regardless of cwd
 const DB_PATH = process.env.SQLITE_PATH || join(__dirname, "shadowing.db");
 const COOLDOWN_DAYS = Math.min(21, Math.max(14, parseInt(process.env.COOLDOWN_DAYS, 10) || 14));
+const VERIFICATION_TTL_MS = 10 * 60 * 1000;
+const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+const VERIFICATION_MAX_ATTEMPTS = 5;
+const VERIFICATION_LOCK_MS = 10 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_COOKIE_NAME = "shadowing_session";
 
 const loginAttempts = new Map();
 
@@ -212,6 +218,9 @@ const openDb = async () => {
     "alter table users add column is_verified integer not null default 0",
     "alter table users add column verification_code text",
     "alter table users add column verification_expires_at text",
+    "alter table users add column verification_sent_at text",
+    "alter table users add column verification_attempts integer not null default 0",
+    "alter table users add column verification_locked_until text",
   ]) {
     try {
       await db.run(col);
@@ -279,8 +288,61 @@ const mapClinicRow = (row) => {
 
 const db = await openDb();
 
+function parseCookies(req) {
+  const rawCookie = req.headers.cookie;
+  if (!rawCookie) return {};
+
+  return rawCookie
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((acc, pair) => {
+      const idx = pair.indexOf("=");
+      if (idx <= 0) return acc;
+      const key = pair.slice(0, idx);
+      const value = pair.slice(idx + 1);
+      acc[key] = decodeURIComponent(value);
+      return acc;
+    }, {});
+}
+
+function getSessionToken(req) {
+  const headerToken = req.headers["x-session-token"];
+  if (headerToken) return headerToken;
+
+  const cookies = parseCookies(req);
+  return cookies[SESSION_COOKIE_NAME] || null;
+}
+
+function setSessionCookie(res, token) {
+  const secureFlag = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const maxAgeSeconds = Math.floor(SESSION_TTL_MS / 1000);
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secureFlag}`
+  );
+}
+
+function clearSessionCookie(res) {
+  const secureFlag = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`
+  );
+}
+
+async function issueSession(userId, res) {
+  const token = randomBytes(32).toString("hex");
+  await db.run(
+    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
+    [token, userId, new Date().toISOString()]
+  );
+  setSessionCookie(res, token);
+  return token;
+}
+
 async function getUserIdFromToken(req) {
-  const token = req.headers["x-session-token"];
+  const token = getSessionToken(req);
   if (!token) return null;
   const row = await db.get(
     "select user_id, created_at from auth_sessions where token = ?",
@@ -289,7 +351,7 @@ async function getUserIdFromToken(req) {
   if (!row) return null;
 
   const age = Date.now() - new Date(row.created_at).getTime();
-  if (age > 7 * 24 * 60 * 60 * 1000) {
+  if (age > SESSION_TTL_MS) {
     await db.run("delete from auth_sessions where token = ?", [token]);
     return null;
   }
@@ -1032,44 +1094,73 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   if (!user.is_verified) {
-    await sendVerificationCode(normalizedEmail);
+    await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
     res.status(403).json({ error: "email_not_verified", email: normalizedEmail });
     return;
   }
 
-  const token = randomBytes(32).toString("hex");
-  await db.run(
-    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
-    [token, normalizedEmail, new Date().toISOString()]
-  );
-
-  res.json({ email: normalizedEmail, token });
+  await issueSession(normalizedEmail, res);
+  res.json({ email: normalizedEmail });
 });
 
 app.delete("/api/auth/logout", async (req, res) => {
-  const token = req.headers["x-session-token"];
-  if (!token) {
-    res.status(400).json({ error: "No token provided." });
+  const token = getSessionToken(req);
+  if (token) {
+    await db.run("delete from auth_sessions where token = ?", [token]);
+  }
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/session", async (req, res) => {
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    clearSessionCookie(res);
+    res.status(401).json({ authenticated: false });
     return;
   }
-  await db.run("delete from auth_sessions where token = ?", [token]);
-  res.json({ ok: true });
+  res.json({ authenticated: true, email: userId });
 });
 
 // --- Email verification ---
 
-async function sendVerificationCode(email) {
+async function sendVerificationCode(email, options = {}) {
+  const { enforceResendCooldown = false } = options;
+  const existing = await db.get(
+    "select verification_sent_at from users where email = ?",
+    [email]
+  );
+
+  if (!existing) {
+    return { sent: false, reason: "user_not_found" };
+  }
+
+  if (enforceResendCooldown && existing.verification_sent_at) {
+    const elapsed = Date.now() - new Date(existing.verification_sent_at).getTime();
+    if (elapsed < VERIFICATION_RESEND_COOLDOWN_MS) {
+      const retryAfterMs = Math.max(0, VERIFICATION_RESEND_COOLDOWN_MS - elapsed);
+      return { sent: false, reason: "resend_cooldown", retryAfterMs };
+    }
+  }
+
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS).toISOString();
 
   await db.run(
-    "update users set verification_code = ?, verification_expires_at = ? where email = ?",
-    [code, expiresAt, email]
+    `update users
+     set verification_code = ?,
+         verification_expires_at = ?,
+         verification_sent_at = ?,
+         verification_attempts = 0,
+         verification_locked_until = null
+     where email = ?`,
+    [code, expiresAt, nowIso, email]
   );
 
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
-  if (!apiKey) return;
+  if (!apiKey) return { sent: true };
 
   await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -1091,6 +1182,8 @@ async function sendVerificationCode(email) {
       `,
     }),
   }).catch(() => {});
+
+  return { sent: true };
 }
 
 app.post("/api/auth/send-verification", async (req, res) => {
@@ -1101,11 +1194,22 @@ app.post("/api/auth/send-verification", async (req, res) => {
   }
   const normalizedEmail = email.trim().toLowerCase();
   const user = await db.get("select email from users where email = ?", [normalizedEmail]);
+
+  // Always return a generic success envelope to avoid account enumeration.
   if (!user) {
-    res.status(404).json({ error: "Account not found." });
+    res.json({ ok: true });
     return;
   }
-  await sendVerificationCode(normalizedEmail);
+
+  const result = await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
+  if (!result.sent && result.reason === "resend_cooldown") {
+    res.status(429).json({
+      error: "Please wait before requesting another verification code.",
+      retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000),
+    });
+    return;
+  }
+
   res.json({ ok: true });
 });
 
@@ -1117,11 +1221,32 @@ app.post("/api/auth/verify", async (req, res) => {
   }
   const normalizedEmail = email.trim().toLowerCase();
   const user = await db.get(
-    "select verification_code, verification_expires_at from users where email = ?",
+    `select verification_code, verification_expires_at, verification_attempts, verification_locked_until
+     from users where email = ?`,
     [normalizedEmail]
   );
 
+  if (user?.verification_locked_until && new Date(user.verification_locked_until) > new Date()) {
+    res.status(429).json({ error: "Too many failed attempts. Please try again later." });
+    return;
+  }
+
   if (!user || user.verification_code !== String(code).trim()) {
+    if (user) {
+      const nextAttempts = (user.verification_attempts ?? 0) + 1;
+      if (nextAttempts >= VERIFICATION_MAX_ATTEMPTS) {
+        const lockUntil = new Date(Date.now() + VERIFICATION_LOCK_MS).toISOString();
+        await db.run(
+          "update users set verification_attempts = ?, verification_locked_until = ? where email = ?",
+          [nextAttempts, lockUntil, normalizedEmail]
+        );
+      } else {
+        await db.run(
+          "update users set verification_attempts = ? where email = ?",
+          [nextAttempts, normalizedEmail]
+        );
+      }
+    }
     res.status(400).json({ error: "Invalid verification code." });
     return;
   }
@@ -1131,17 +1256,19 @@ app.post("/api/auth/verify", async (req, res) => {
   }
 
   await db.run(
-    "update users set is_verified = 1, verification_code = null, verification_expires_at = null where email = ?",
+    `update users
+     set is_verified = 1,
+         verification_code = null,
+         verification_expires_at = null,
+         verification_sent_at = null,
+         verification_attempts = 0,
+         verification_locked_until = null
+     where email = ?`,
     [normalizedEmail]
   );
 
-  const token = randomBytes(32).toString("hex");
-  await db.run(
-    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
-    [token, normalizedEmail, new Date().toISOString()]
-  );
-
-  res.json({ email: normalizedEmail, token });
+  await issueSession(normalizedEmail, res);
+  res.json({ email: normalizedEmail });
 });
 
 // --- AADSAS Export ---

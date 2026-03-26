@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
-import { getStoredToken } from "../lib/auth.js";
+import { authFetch } from "../lib/auth.js";
 
 function isLocked(clinic) {
   if (!clinic?.lockExpiresAt) return false;
@@ -18,9 +18,7 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
   const [totalHours, setTotalHours] = useState(null);
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) return;
-    fetch("/api/projects", { headers: { "x-session-token": token } })
+    authFetch("/api/projects")
       .then((r) => (r.ok ? r.json() : []))
       .then((projects) => {
         let total = 0;

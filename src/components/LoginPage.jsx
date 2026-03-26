@@ -11,6 +11,17 @@ export default function LoginPage({ onSuccess, onBack }) {
   const [pendingEmail, setPendingEmail] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
   const [resendCooldown, setResendCooldown] = useState(false);
+  const [resendTimerId, setResendTimerId] = useState(null);
+
+  const startResendCooldown = (seconds) => {
+    setResendCooldown(true);
+    if (resendTimerId) clearTimeout(resendTimerId);
+    const timerId = setTimeout(() => {
+      setResendCooldown(false);
+      setResendTimerId(null);
+    }, Math.max(1, seconds) * 1000);
+    setResendTimerId(timerId);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -118,15 +129,23 @@ export default function LoginPage({ onSuccess, onBack }) {
 
   const handleResend = async () => {
     setError("");
-    setResendCooldown(true);
-    setTimeout(() => setResendCooldown(false), 30000);
+    startResendCooldown(30);
     try {
-      await fetch("/api/auth/send-verification", {
+      const res = await fetch("/api/auth/send-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: pendingEmail }),
       });
-    } catch {}
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          startResendCooldown(data.retryAfterSeconds || 60);
+        }
+        setError(data.error || "Could not resend code. Please try again.");
+      }
+    } catch {
+      setError("Could not connect to server. Please try again.");
+    }
   };
 
   if (step === "verify") {
