@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "../data/clinics.js";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
+import { formatApiErrorMessage } from "../lib/auth.js";
 
 const MILES_OPTIONS = [5, 10, 15, 25];
 
@@ -213,9 +214,9 @@ export default function ClinicsPage({
         setRequestSuccess({ clinic: data.clinic, lockExpiresAt: data.lockExpiresAt });
         onRefreshClinics?.();
       } else if (res.status === 409) {
-        setRequestError(data.error || "This clinic is temporarily unavailable.");
+        setRequestError(await formatApiErrorMessage(res, "This clinic is temporarily unavailable."));
       } else {
-        setRequestError(data.error || "Request failed.");
+        setRequestError(await formatApiErrorMessage(res, "Request failed."));
       }
     } catch {
       setRequestError("Network error. Please try again.");

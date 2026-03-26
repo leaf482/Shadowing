@@ -14,7 +14,8 @@
     "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "dev:all": "npm run dev:seed && npm run dev:full",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:smoke:auth": "node --test server/auth.smoke.test.mjs"
   },
   "dependencies": {
     "concurrently": "^8.2.2",

@@ -45,6 +45,18 @@ Or run everything together (seed + server + web):
 npm run dev:all
 ```
 
+Run auth smoke checks against a running API server:
+
+```bash
+npm run test:smoke:auth
+```
+
+Optional: point tests to a different server URL.
+
+```bash
+SMOKE_BASE_URL=http://localhost:3000 npm run test:smoke:auth
+```
+
 SQLite database file:
 
 - `server/shadowing.db`
