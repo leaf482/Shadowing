@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import ProjectForm from "./ProjectForm.jsx";
 import SessionForm from "./SessionForm.jsx";
 import ExperienceForm from "./ExperienceForm.jsx";
-import { getStoredEmail, authFetch } from "../lib/auth.js";
+import { getStoredEmail, authFetch, formatApiErrorMessage } from "../lib/auth.js";
 
 const EXPERIENCE_TYPE_LABELS = {
   dental_shadowing_in_person: "Dental Shadowing (In-Person)",
@@ -92,8 +92,7 @@ export default function TrackerPage() {
       await loadExperiences();
       setActiveForm(null);
     } else {
-      const data = await res.json().catch(() => ({}));
-      setSaveError(data.error || "Failed to save experience. Please try again.");
+      setSaveError(await formatApiErrorMessage(res, "Failed to save experience. Please try again."));
     }
   };
 
@@ -109,8 +108,7 @@ export default function TrackerPage() {
       await loadExperiences();
       setEditingExp(null);
     } else {
-      const data = await res.json().catch(() => ({}));
-      setSaveError(data.error || "Failed to update experience. Please try again.");
+      setSaveError(await formatApiErrorMessage(res, "Failed to update experience. Please try again."));
     }
   };
 

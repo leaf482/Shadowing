@@ -79,6 +79,19 @@ export async function authFetch(url, options = {}) {
   return response;
 }
 
+export async function formatApiErrorMessage(response, fallbackMessage) {
+  let requestId = response?.headers?.get?.("x-request-id") || "";
+  let payload = {};
+
+  try {
+    payload = await response.clone().json();
+    if (payload?.requestId) requestId = payload.requestId;
+  } catch {}
+
+  const base = payload?.error || fallbackMessage;
+  return requestId ? `${base} (Ref: ${requestId})` : base;
+}
+
 export async function clearSession() {
   try {
     await fetch("/api/auth/logout", {

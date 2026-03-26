@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
-import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer } from "./lib/auth.js";
+import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer, formatApiErrorMessage } from "./lib/auth.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import MapPanel from "./components/MapPanel.jsx";
@@ -109,7 +109,8 @@ export default function App() {
   const fetchClinics = async () => {
     const response = await fetch("/api/clinics");
     if (!response.ok) {
-      throw new Error("Failed to load clinics.");
+      const message = await formatApiErrorMessage(response, "Failed to load clinics.");
+      throw new Error(message);
     }
     return response.json();
   };
@@ -124,7 +125,7 @@ export default function App() {
         setSelectedClinicId(clinicRows[0].id);
       }
     } catch (error) {
-      setLoadError("Could not load data from SQLite server.");
+      setLoadError(error?.message || "Could not load data from SQLite server.");
       setClinics([]);
     } finally {
       setIsLoading(false);
@@ -153,7 +154,7 @@ export default function App() {
     if (response.ok) {
       await refreshData();
     } else {
-      setLoadError("Could not save clinic.");
+      setLoadError(await formatApiErrorMessage(response, "Could not save clinic."));
     }
   };
 
