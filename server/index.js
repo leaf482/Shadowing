@@ -29,6 +29,10 @@ const VERIFICATION_TTL_MS = clamp(envInt("VERIFICATION_TTL_MS", 10 * 60 * 1000),
 const VERIFICATION_RESEND_COOLDOWN_MS = clamp(envInt("VERIFICATION_RESEND_COOLDOWN_MS", 60 * 1000), 10 * 1000, 10 * 60 * 1000);
 const VERIFICATION_MAX_ATTEMPTS = clamp(envInt("VERIFICATION_MAX_ATTEMPTS", 5), 3, 10);
 const VERIFICATION_LOCK_MS = clamp(envInt("VERIFICATION_LOCK_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
+const PASSWORD_RESET_TTL_MS = clamp(envInt("PASSWORD_RESET_TTL_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
+const PASSWORD_RESET_RESEND_COOLDOWN_MS = clamp(envInt("PASSWORD_RESET_RESEND_COOLDOWN_MS", 60 * 1000), 10 * 1000, 10 * 60 * 1000);
+const PASSWORD_RESET_MAX_ATTEMPTS = clamp(envInt("PASSWORD_RESET_MAX_ATTEMPTS", 5), 3, 10);
+const PASSWORD_RESET_LOCK_MS = clamp(envInt("PASSWORD_RESET_LOCK_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
 const SESSION_TTL_MS = clamp(envInt("SESSION_TTL_MS", 7 * 24 * 60 * 60 * 1000), 60 * 60 * 1000, 30 * 24 * 60 * 60 * 1000);
 const SESSION_REFRESH_THRESHOLD_MS = clamp(
   envInt("SESSION_REFRESH_THRESHOLD_MS", 24 * 60 * 60 * 1000),
@@ -308,6 +312,21 @@ const openDb = async () => {
     "alter table users add column verification_sent_at text",
     "alter table users add column verification_attempts integer not null default 0",
     "alter table users add column verification_locked_until text",
+  ]) {
+    try {
+      await db.run(col);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
+  // Migration: password reset fields on users
+  for (const col of [
+    "alter table users add column password_reset_code text",
+    "alter table users add column password_reset_expires_at text",
+    "alter table users add column password_reset_sent_at text",
+    "alter table users add column password_reset_attempts integer not null default 0",
+    "alter table users add column password_reset_locked_until text",
   ]) {
     try {
       await db.run(col);
@@ -1290,6 +1309,68 @@ async function sendVerificationCode(email, options = {}) {
   return { sent: true };
 }
 
+async function sendPasswordResetCode(email, options = {}) {
+  const { enforceResendCooldown = false } = options;
+  const existing = await db.get(
+    "select password_reset_sent_at from users where email = ?",
+    [email]
+  );
+
+  if (!existing) {
+    return { sent: false, reason: "user_not_found" };
+  }
+
+  if (enforceResendCooldown && existing.password_reset_sent_at) {
+    const elapsed = Date.now() - new Date(existing.password_reset_sent_at).getTime();
+    if (elapsed < PASSWORD_RESET_RESEND_COOLDOWN_MS) {
+      const retryAfterMs = Math.max(0, PASSWORD_RESET_RESEND_COOLDOWN_MS - elapsed);
+      return { sent: false, reason: "resend_cooldown", retryAfterMs };
+    }
+  }
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const nowIso = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
+
+  await db.run(
+    `update users
+     set password_reset_code = ?,
+         password_reset_expires_at = ?,
+         password_reset_sent_at = ?,
+         password_reset_attempts = 0,
+         password_reset_locked_until = null
+     where email = ?`,
+    [code, expiresAt, nowIso, email]
+  );
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
+  if (!apiKey) return { sent: true };
+
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [email],
+      subject: "Shadow Network password reset code",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2>Reset your password</h2>
+          <p>Use this code to reset your Shadow Network password:</p>
+          <div style="font-size:2rem;font-weight:bold;letter-spacing:0.25em;padding:1rem;background:#f4f4f5;border-radius:8px;text-align:center">${code}</div>
+          <p style="color:#888;font-size:0.875rem">This code expires in 10 minutes. If you did not request a password reset, you can safely ignore this email.</p>
+        </div>
+      `,
+    }),
+  }).catch(() => {});
+
+  return { sent: true };
+}
+
 app.post("/api/auth/send-verification", async (req, res) => {
   const { email } = req.body ?? {};
   if (!email || !isValidEduEmail(email)) {
@@ -1384,6 +1465,130 @@ app.post("/api/auth/verify", async (req, res) => {
   await issueSession(normalizedEmail, res);
   logAuthEventForRequest(req, "verification_success", { email: maskEmail(normalizedEmail) });
   res.json({ email: normalizedEmail });
+});
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email || !isValidEduEmail(email)) {
+    sendError(req, res, 400, "A valid .edu email is required.");
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.get(
+    "select email, is_verified from users where email = ?",
+    [normalizedEmail]
+  );
+
+  // Generic success response to avoid account enumeration.
+  if (!user || !user.is_verified) {
+    logAuthEventForRequest(req, "password_reset_request_ignored", { email: maskEmail(normalizedEmail) });
+    res.json({ ok: true });
+    return;
+  }
+
+  const result = await sendPasswordResetCode(normalizedEmail, { enforceResendCooldown: true });
+  if (!result.sent && result.reason === "resend_cooldown") {
+    logAuthEventForRequest(req, "password_reset_cooldown", { email: maskEmail(normalizedEmail) });
+    sendError(
+      req,
+      res,
+      429,
+      "Please wait before requesting another reset code.",
+      { retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000) }
+    );
+    return;
+  }
+
+  logAuthEventForRequest(req, "password_reset_requested", { email: maskEmail(normalizedEmail) });
+  res.json({ ok: true });
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { email, code, password } = req.body ?? {};
+  if (!email || !code || !password) {
+    sendError(req, res, 400, "Email, code, and new password are required.");
+    return;
+  }
+  if (!isValidEduEmail(email)) {
+    sendError(req, res, 400, "A valid .edu email address is required.");
+    return;
+  }
+  if (typeof password !== "string" || password.length < 8) {
+    sendError(req, res, 400, "Password must be at least 8 characters.");
+    return;
+  }
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    sendError(req, res, 400, "Password must include both letters and numbers.");
+    return;
+  }
+  if (password.length > 128) {
+    sendError(req, res, 400, "Password is too long.");
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await db.get(
+    `select password_reset_code, password_reset_expires_at, password_reset_attempts, password_reset_locked_until
+     from users where email = ?`,
+    [normalizedEmail]
+  );
+
+  if (!user) {
+    logAuthEventForRequest(req, "password_reset_failed_unknown_user", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 400, "Invalid reset code.");
+    return;
+  }
+
+  if (user.password_reset_locked_until && new Date(user.password_reset_locked_until) > new Date()) {
+    logAuthEventForRequest(req, "password_reset_locked", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 429, "Too many failed attempts. Please try again later.");
+    return;
+  }
+
+  if (!user.password_reset_code || user.password_reset_code !== String(code).trim()) {
+    const nextAttempts = (user.password_reset_attempts ?? 0) + 1;
+    if (nextAttempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      const lockUntil = new Date(Date.now() + PASSWORD_RESET_LOCK_MS).toISOString();
+      await db.run(
+        "update users set password_reset_attempts = ?, password_reset_locked_until = ? where email = ?",
+        [nextAttempts, lockUntil, normalizedEmail]
+      );
+      logAuthEventForRequest(req, "password_reset_locked_due_to_attempts", { email: maskEmail(normalizedEmail) });
+    } else {
+      await db.run(
+        "update users set password_reset_attempts = ? where email = ?",
+        [nextAttempts, normalizedEmail]
+      );
+    }
+    logAuthEventForRequest(req, "password_reset_failed_invalid_code", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 400, "Invalid reset code.");
+    return;
+  }
+
+  if (!user.password_reset_expires_at || new Date(user.password_reset_expires_at) < new Date()) {
+    logAuthEventForRequest(req, "password_reset_expired", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 400, "Reset code has expired. Please request a new one.");
+    return;
+  }
+
+  const passwordHash = hashPassword(password);
+  await db.run(
+    `update users
+     set password_hash = ?,
+         password_reset_code = null,
+         password_reset_expires_at = null,
+         password_reset_sent_at = null,
+         password_reset_attempts = 0,
+         password_reset_locked_until = null
+     where email = ?`,
+    [passwordHash, normalizedEmail]
+  );
+
+  await db.run("delete from auth_sessions where user_id = ?", [normalizedEmail]);
+
+  logAuthEventForRequest(req, "password_reset_success", { email: maskEmail(normalizedEmail) });
+  res.json({ ok: true });
 });
 
 // --- AADSAS Export ---
