@@ -1029,6 +1029,78 @@ app.post("/api/projects", async (req, res) => {
   res.status(201).json({ id });
 });
 
+app.put("/api/projects/:id", async (req, res) => {
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { id } = req.params;
+  const project = await db.get(
+    "select id from projects where id = ? and user_id = ?",
+    [id, userId]
+  );
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  const {
+    name,
+    dateStart,
+    clinicId,
+    experienceType,
+    address, address2, city, stateProvince, country, zip,
+    supervisorFirstName, supervisorLastName, supervisorTitle,
+    supervisorPhone, supervisorEmail,
+    status, description, notes,
+  } = req.body ?? {};
+
+  if (!name) {
+    res.status(400).json({ error: "Project name is required." });
+    return;
+  }
+  if (!dateStart) {
+    res.status(400).json({ error: "Project start date is required." });
+    return;
+  }
+
+  await db.run(
+    `update projects
+       set name = ?, date_start = ?, clinic_id = ?, experience_type = ?,
+           address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
+           supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?,
+           supervisor_phone = ?, supervisor_email = ?,
+           status = ?, description = ?, notes = ?
+     where id = ? and user_id = ?`,
+    [
+      name,
+      dateStart,
+      clinicId ?? null,
+      experienceType ?? null,
+      address ?? "",
+      address2 ?? "",
+      city ?? "",
+      stateProvince ?? "",
+      country ?? "",
+      zip ?? "",
+      supervisorFirstName ?? "",
+      supervisorLastName ?? "",
+      supervisorTitle ?? "",
+      supervisorPhone ?? "",
+      supervisorEmail ?? "",
+      status ?? "",
+      description ?? "",
+      notes ?? "",
+      id,
+      userId,
+    ]
+  );
+
+  res.json({ ok: true });
+});
+
 app.post("/api/projects/:id/sessions", async (req, res) => {
   const userId = await getUserIdFromToken(req);
   if (!userId) {

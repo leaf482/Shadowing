@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EXPERIENCE_TYPES, COUNTRIES, US_STATES, STATUS_OPTIONS } from "../data/experienceTypes.js";
 
 const makeEmpty = (formType) => ({
@@ -24,8 +24,34 @@ const makeEmpty = (formType) => ({
   notes: "",
 });
 
-export default function ProjectForm({ onSubmit, onCancel, formType }) {
-  const [form, setForm] = useState(() => makeEmpty(formType));
+const makeFromInitial = (formType, initialData) => ({
+  name: initialData?.name ?? "",
+  dateStart: initialData?.dateStart ?? "",
+  experienceType:
+    initialData?.experienceType ||
+    (formType === "volunteering" ? "volunteer" : "dental_shadowing_in_person"),
+  address: initialData?.address ?? "",
+  address2: initialData?.address2 ?? "",
+  city: initialData?.city ?? "",
+  country: initialData?.country ?? "",
+  zip: initialData?.zip ?? "",
+  stateProvince: initialData?.stateProvince ?? "",
+  supervisorFirstName: initialData?.supervisorFirstName ?? "",
+  supervisorLastName: initialData?.supervisorLastName ?? "",
+  supervisorTitle: initialData?.supervisorTitle ?? "",
+  supervisorPhone: initialData?.supervisorPhone ?? "",
+  supervisorEmail: initialData?.supervisorEmail ?? "",
+  status: initialData?.status ?? "",
+  description: initialData?.description ?? "",
+  notes: initialData?.notes ?? "",
+});
+
+export default function ProjectForm({ onSubmit, onCancel, formType, initialData = null, submitLabel = "Save project" }) {
+  const [form, setForm] = useState(() => (initialData ? makeFromInitial(formType, initialData) : makeEmpty(formType)));
+
+  useEffect(() => {
+    setForm(initialData ? makeFromInitial(formType, initialData) : makeEmpty(formType));
+  }, [formType, initialData]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -54,13 +80,14 @@ export default function ProjectForm({ onSubmit, onCancel, formType }) {
       description: form.description.trim(),
       notes: form.notes.trim(),
     });
-    setForm(makeEmpty(formType));
+    if (!initialData) {
+      setForm(makeEmpty(formType));
+    }
   };
 
-  const formTitle =
-    formType === "volunteering"
-      ? "Add Volunteering Experience"
-      : "Add Shadowing Experience";
+  const formTitle = initialData
+    ? (formType === "volunteering" ? "Edit Volunteering Experience" : "Edit Shadowing Experience")
+    : (formType === "volunteering" ? "Add Volunteering Experience" : "Add Shadowing Experience");
 
   return (
     <form className="form experience-form" onSubmit={handleSubmit}>
@@ -181,7 +208,7 @@ export default function ProjectForm({ onSubmit, onCancel, formType }) {
       </div>
 
       <div className="form__actions">
-        <button className="primary-button" type="submit">Save project</button>
+        <button className="primary-button" type="submit">{submitLabel}</button>
         {onCancel && (
           <button type="button" className="ghost-button" onClick={onCancel}>Cancel</button>
         )}

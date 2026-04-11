@@ -18,6 +18,7 @@ export default function TrackerPage() {
   const [experiences, setExperiences] = useState([]);
   const [activeForm, setActiveForm] = useState(null); // 'shadowing' | 'aadsas' | 'volunteering'
   const [activeProjectId, setActiveProjectId] = useState(null);
+  const [editingProject, setEditingProject] = useState(null);
   const [expandedExpId, setExpandedExpId] = useState(null);
   const [editingExp, setEditingExp] = useState(null); // experience object being edited
   const [saveError, setSaveError] = useState("");
@@ -82,6 +83,22 @@ export default function TrackerPage() {
       setActiveForm(null);
     } else {
       setActionError(await formatApiErrorMessage(res, "Failed to create project. Please try again."));
+    }
+  };
+
+  const handleUpdateProject = async (payload) => {
+    if (!editingProject) return;
+    setActionError("");
+    const res = await authFetch(`/api/projects/${editingProject.id}`, {
+      method: "PUT",
+      headers: userHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      await loadProjects();
+      setEditingProject(null);
+    } else {
+      setActionError(await formatApiErrorMessage(res, "Failed to update project. Please try again."));
     }
   };
 
@@ -191,6 +208,7 @@ export default function TrackerPage() {
   const toggleActiveForm = (type) => {
     setActiveForm((prev) => (prev === type ? null : type));
     setActiveProjectId(null);
+    setEditingProject(null);
     setEditingExp(null);
     setSaveError("");
     setActionError("");
@@ -226,6 +244,20 @@ export default function TrackerPage() {
                   {isActive
                     ? "▲ Hide"
                     : `▼ Sessions${p.sessions.length > 0 ? ` (${p.sessions.length})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setEditingProject(p);
+                    setActiveForm(null);
+                    setEditingExp(null);
+                    setSaveError("");
+                    setActionError("");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  Edit
                 </button>
                 <button
                   type="button"
@@ -417,6 +449,18 @@ export default function TrackerPage() {
             formType="volunteering"
             onSubmit={handleCreateProject}
             onCancel={() => setActiveForm(null)}
+          />
+        </div>
+      )}
+
+      {editingProject && (
+        <div className="card">
+          <ProjectForm
+            formType={editingProject.experienceType === "volunteer" ? "volunteering" : "shadowing"}
+            initialData={editingProject}
+            submitLabel="Update project"
+            onSubmit={handleUpdateProject}
+            onCancel={() => setEditingProject(null)}
           />
         </div>
       )}

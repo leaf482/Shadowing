@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
 import { authFetch } from "../lib/auth.js";
+import { formatApiErrorMessage } from "../lib/auth.js";
 
 function isLocked(clinic) {
   if (!clinic?.lockExpiresAt) return false;
@@ -14,32 +15,68 @@ function formatLockExpires(lockExpiresAt) {
   });
 }
 
-export default function ClinicTrackerPanel({ clinic, statusLabels }) {
-  const [totalHours, setTotalHours] = useState(null);
+export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClinics }) {
+  const [hoursSummary, setHoursSummary] = useState(null);
+  const [loadingRequest, setLoadingRequest] = useState(false);
+  const [requestError, setRequestError] = useState("");
+  const [requestSuccess, setRequestSuccess] = useState("");
+  const [quickStatus, setQuickStatus] = useState("pending");
+  const [quickNotes, setQuickNotes] = useState("");
+  const [savingQuickUpdate, setSavingQuickUpdate] = useState(false);
+  const [quickUpdateError, setQuickUpdateError] = useState("");
+  const [quickUpdateSuccess, setQuickUpdateSuccess] = useState("");
 
   useEffect(() => {
     authFetch("/api/projects")
       .then((r) => (r.ok ? r.json() : []))
       .then((projects) => {
-        let total = 0;
-        projects.forEach((p) => p.sessions.forEach((s) => { total += s.hours; }));
-        setTotalHours(total);
+        let shadowing = 0;
+        let volunteering = 0;
+        projects.forEach((p) => {
+          const projectHours = p.sessions.reduce((sum, s) => sum + s.hours, 0);
+          if (
+            !p.experienceType ||
+            p.experienceType === "dental_shadowing_in_person" ||
+            p.experienceType === "dental_shadowing_virtual"
+          ) {
+            shadowing += projectHours;
+          } else if (p.experienceType === "volunteer") {
+            volunteering += projectHours;
+          }
+        });
+        setHoursSummary({ shadowing, volunteering });
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!clinic) return;
+    setQuickStatus(clinic.shadowingStatus || "pending");
+    setQuickNotes(clinic.notes || "");
+    setQuickUpdateError("");
+    setQuickUpdateSuccess("");
+  }, [clinic]);
 
   /* ── Hours widget (shown in both states) ── */
   const HoursWidget = () => (
     <div className="card card--compact" style={{ marginTop: "0.85rem" }}>
       <p className="eyebrow" style={{ marginBottom: "0.5rem" }}>Your shadowing progress</p>
-      <div className="hours-widget">
-        <span className="hours-widget__value">
-          {totalHours !== null ? totalHours.toFixed(1) : "—"}
-        </span>
-        <span className="hours-widget__label">Total hours logged</span>
+      <div className="hours-widget" style={{ gap: "0.5rem" }}>
+        <div>
+          <span className="hours-widget__value">
+            {hoursSummary !== null ? hoursSummary.shadowing.toFixed(1) : "—"}
+          </span>
+          <span className="hours-widget__label">Shadowing hours</span>
+        </div>
+        <div>
+          <span className="hours-widget__value" style={{ fontSize: "2rem" }}>
+            {hoursSummary !== null ? hoursSummary.volunteering.toFixed(1) : "—"}
+          </span>
+          <span className="hours-widget__label">Volunteering hours</span>
+        </div>
       </div>
       <p className="muted small" style={{ marginTop: "0.4rem", marginBottom: 0 }}>
-        Across all projects in your tracker
+        Split totals from your tracker entries
       </p>
     </div>
   );
@@ -62,7 +99,7 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
             </p>
           </div>
         </div>
-        {totalHours !== null && <HoursWidget />}
+        {hoursSummary !== null && <HoursWidget />}
       </div>
     );
   }
@@ -73,12 +110,75 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
     clinic.shadowingStatus === "available" && locked ? "locked" : clinic.shadowingStatus;
   const statusLabel =
     clinic.shadowingStatus === "available" && locked
-      ? `On hold until ${formatLockExpires(clinic.lockExpiresAt)}`
+      ? `Temporarily unavailable until ${formatLockExpires(clinic.lockExpiresAt)}`
       : statusLabels[clinic.shadowingStatus] ?? clinic.shadowingStatus;
 
   const specialtyLabel =
     PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)?.label
     ?? clinic.primarySpecialty;
+  const availableForRequest = clinic.shadowingStatus === "available" && !locked;
+
+  const handleReserveSlot = async () => {
+    setRequestError("");
+    setRequestSuccess("");
+    setLoadingRequest(true);
+    try {
+      const res = await fetch(`/api/clinics/${clinic.id}/request`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        setRequestSuccess("Reserved. This clinic is temporarily unavailable for about 2 weeks.");
+        onRefreshClinics?.();
+      } else if (res.status === 409) {
+        setRequestError(await formatApiErrorMessage(res, "This clinic is temporarily unavailable."));
+      } else {
+        setRequestError(await formatApiErrorMessage(res, "Request failed."));
+      }
+    } catch {
+      setRequestError("Network error. Please try again.");
+    } finally {
+      setLoadingRequest(false);
+    }
+  };
+
+  const handleQuickUpdate = async () => {
+    if (!clinic) return;
+    setQuickUpdateError("");
+    setQuickUpdateSuccess("");
+    setSavingQuickUpdate(true);
+    try {
+      const response = await authFetch(`/api/clinics/${clinic.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: clinic.name,
+          address: clinic.address,
+          phone: clinic.phone ?? "",
+          email: clinic.email ?? "",
+          lat: clinic.lat,
+          lng: clinic.lng,
+          zip: clinic.zip ?? "",
+          shadowingStatus: quickStatus,
+          primarySpecialty: clinic.primarySpecialty ?? "gp",
+          secondaryFilters: Array.isArray(clinic.secondaryFilters) ? clinic.secondaryFilters : [],
+          notes: quickNotes.trim(),
+        })
+      });
+
+      if (response.ok) {
+        setQuickUpdateSuccess("Clinic updated.");
+        onRefreshClinics?.();
+      } else {
+        setQuickUpdateError(await formatApiErrorMessage(response, "Could not update clinic."));
+      }
+    } catch {
+      setQuickUpdateError("Network error. Please try again.");
+    } finally {
+      setSavingQuickUpdate(false);
+    }
+  };
 
   return (
     <div className="info-panel">
@@ -95,6 +195,82 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
             {statusLabel}
           </span>
         </div>
+
+        {availableForRequest && (
+          <div style={{ marginTop: "0.65rem" }}>
+            <button
+              type="button"
+              className="button button--primary button--small"
+              disabled={loadingRequest}
+              onClick={handleReserveSlot}
+            >
+              {loadingRequest ? "…" : "Reserve slot"}
+            </button>
+          </div>
+        )}
+        {requestSuccess && (
+          <p className="muted small" style={{ marginTop: "0.5rem", marginBottom: 0, color: "var(--success)" }}>
+            {requestSuccess}
+          </p>
+        )}
+        {requestError && (
+          <p className="muted small" style={{ marginTop: "0.5rem", marginBottom: 0, color: "var(--danger)" }}>
+            {requestError}
+          </p>
+        )}
+
+        {clinic.shadowingStatus === "pending" && (
+          <div className="clinic-info__notes-block" style={{ marginTop: "0.8rem", paddingTop: "0.8rem" }}>
+            <p className="clinic-info__field-label" style={{ marginBottom: "0.45rem" }}>
+              Quick update (pending)
+            </p>
+            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`button button--small ${quickStatus === "available" ? "button--primary" : "button--secondary"}`}
+                onClick={() => setQuickStatus("available")}
+              >
+                Available
+              </button>
+              <button
+                type="button"
+                className={`button button--small ${quickStatus === "unavailable" ? "button--primary" : "button--secondary"}`}
+                onClick={() => setQuickStatus("unavailable")}
+              >
+                Not available
+              </button>
+            </div>
+            <label style={{ marginTop: "0.6rem" }}>
+              Notes / description
+              <textarea
+                value={quickNotes}
+                onChange={(e) => setQuickNotes(e.target.value)}
+                rows={3}
+                placeholder="Update quick notes for this clinic"
+              />
+            </label>
+            <div style={{ marginTop: "0.55rem" }}>
+              <button
+                type="button"
+                className="button button--primary button--small"
+                onClick={handleQuickUpdate}
+                disabled={savingQuickUpdate}
+              >
+                {savingQuickUpdate ? "Saving…" : "Save update"}
+              </button>
+            </div>
+            {quickUpdateSuccess && (
+              <p className="muted small" style={{ marginTop: "0.45rem", marginBottom: 0, color: "var(--success)" }}>
+                {quickUpdateSuccess}
+              </p>
+            )}
+            {quickUpdateError && (
+              <p className="muted small" style={{ marginTop: "0.45rem", marginBottom: 0, color: "var(--danger)" }}>
+                {quickUpdateError}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Info grid */}
         <div className="clinic-info__grid">
@@ -141,7 +317,7 @@ export default function ClinicTrackerPanel({ clinic, statusLabels }) {
         )}
       </div>
 
-      {totalHours !== null && <HoursWidget />}
+      {hoursSummary !== null && <HoursWidget />}
     </div>
   );
 }

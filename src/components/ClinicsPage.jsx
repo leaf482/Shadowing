@@ -395,7 +395,7 @@ export default function ClinicsPage({
             const availableForRequest = isAvailableForRequest(clinic);
             const statusLabel =
               clinic.shadowingStatus === "available" && locked
-                ? `On hold until ${formatLockExpires(clinic.lockExpiresAt)}`
+                ? `Temporarily unavailable until ${formatLockExpires(clinic.lockExpiresAt)}`
                 : statusOptions.find((o) => o.value === clinic.shadowingStatus)?.label ?? clinic.shadowingStatus;
             const statusClass =
               clinic.shadowingStatus === "available" && locked ? "locked" : clinic.shadowingStatus;

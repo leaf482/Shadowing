@@ -2,6 +2,25 @@ import { useState } from "react";
 
 const EMPTY = { date: "", hours: "", notes: "" };
 
+function parseHoursInput(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) return Number.NaN;
+
+  // Supports formats like 2.5 and 2:30 / 2:45
+  if (value.includes(":")) {
+    const match = value.match(/^(\d+):(\d{1,2})$/);
+    if (!match) return Number.NaN;
+    const hrs = Number(match[1]);
+    const mins = Number(match[2]);
+    if (!Number.isFinite(hrs) || !Number.isFinite(mins) || mins < 0 || mins >= 60) {
+      return Number.NaN;
+    }
+    return hrs + mins / 60;
+  }
+
+  return Number(value);
+}
+
 export default function SessionForm({ onSubmit, onCancel }) {
   const [form, setForm] = useState(EMPTY);
 
@@ -12,7 +31,7 @@ export default function SessionForm({ onSubmit, onCancel }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const hoursNum = parseFloat(form.hours);
+    const hoursNum = parseHoursInput(form.hours);
     if (Number.isNaN(hoursNum) || hoursNum < 0) return;
     onSubmit({ date: form.date || null, hours: hoursNum, notes: form.notes.trim() });
     setForm(EMPTY);
@@ -30,13 +49,12 @@ export default function SessionForm({ onSubmit, onCancel }) {
           <label>
             Hours <span className="required">*</span>
             <input
-              type="number"
+              type="text"
               name="hours"
               value={form.hours}
               onChange={handleChange}
-              placeholder="0"
-              min="0"
-              step="0.5"
+              placeholder="2.5 or 2:30"
+              inputMode="decimal"
               required
             />
           </label>

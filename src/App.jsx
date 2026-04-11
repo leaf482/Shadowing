@@ -287,6 +287,7 @@ export default function App() {
                   <ClinicTrackerPanel
                     clinic={selectedClinic}
                     statusLabels={STATUS_LABELS}
+                    onRefreshClinics={refreshData}
                   />
                 </section>
               </div>
