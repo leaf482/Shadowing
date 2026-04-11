@@ -61,18 +61,18 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
   const HoursWidget = () => (
     <div className="card card--compact" style={{ marginTop: "0.85rem" }}>
       <p className="eyebrow" style={{ marginBottom: "0.5rem" }}>Your shadowing progress</p>
-      <div className="hours-widget" style={{ gap: "0.5rem" }}>
-        <div>
+      <div className="hours-widget">
+        <div className="hours-widget__row">
+          <span className="hours-widget__label">Shadowing hours</span>
           <span className="hours-widget__value">
             {hoursSummary !== null ? hoursSummary.shadowing.toFixed(1) : "—"}
           </span>
-          <span className="hours-widget__label">Shadowing hours</span>
         </div>
-        <div>
-          <span className="hours-widget__value" style={{ fontSize: "2rem" }}>
+        <div className="hours-widget__row">
+          <span className="hours-widget__label">Volunteering hours</span>
+          <span className="hours-widget__value hours-widget__value--secondary">
             {hoursSummary !== null ? hoursSummary.volunteering.toFixed(1) : "—"}
           </span>
-          <span className="hours-widget__label">Volunteering hours</span>
         </div>
       </div>
       <p className="muted small" style={{ marginTop: "0.4rem", marginBottom: 0 }}>
@@ -197,7 +197,7 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
         </div>
 
         {availableForRequest && (
-          <div style={{ marginTop: "0.65rem" }}>
+          <div className="clinic-info__actions">
             <button
               type="button"
               className="button button--primary button--small"

@@ -1431,19 +1431,34 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 .info-empty__sub   { font-size: 0.82rem; color: var(--text-2); margin: 0; line-height: 1.5; max-width: 200px; }
 
 /* ── Hours widget ────────────────────────────────────────── */
-.hours-widget { display: flex; flex-direction: column; gap: 0.15rem; }
+.hours-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.hours-widget__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.1rem 0;
+}
 .hours-widget__value {
   display: block;
-  font-size: 2.4rem;
+  font-size: 2.15rem;
   font-weight: 800;
   color: var(--text);
   line-height: 1;
   letter-spacing: -0.02em;
 }
+.hours-widget__value--secondary {
+  font-size: 1.95rem;
+}
 .hours-widget__label {
   display: block;
-  margin-top: 0.15rem;
-  font-size: 0.8rem;
+  margin-top: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
   color: var(--text-2);
 }
 
@@ -1461,6 +1476,10 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   max-width: 100%;
   white-space: normal;
   line-height: 1.25;
+}
+.clinic-info__actions {
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
 }
 .clinic-info__grid {
   display: grid;
