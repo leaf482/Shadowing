@@ -357,6 +357,33 @@ const openDb = async () => {
     }
   }
 
+  await db.run(`
+    create table if not exists admin_audit_logs (
+      id text primary key,
+      actor_user_id text not null,
+      action text not null,
+      target_type text,
+      target_id text,
+      details text,
+      created_at text default (datetime('now'))
+    )
+  `);
+
+  await db.run(`
+    create table if not exists clinic_quality_flags (
+      id text primary key,
+      clinic_id text not null,
+      flag_type text not null,
+      notes text,
+      status text not null default 'open',
+      created_by_user_id text,
+      resolved_by_user_id text,
+      created_at text default (datetime('now')),
+      resolved_at text,
+      foreign key (clinic_id) references clinics(id)
+    )
+  `);
+
   return db;
 };
 
@@ -395,6 +422,39 @@ const canManageClinic = (row, userId) => {
   if (!userId) return false;
   return isAdminUser(userId) || row.created_by_user_id === userId;
 };
+
+async function requireAdmin(req, res) {
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    sendError(req, res, 401, "Unauthorized");
+    return null;
+  }
+  if (!isAdminUser(userId)) {
+    sendError(req, res, 403, "Admin access required.");
+    return null;
+  }
+  return userId;
+}
+
+async function writeAuditLog(actorUserId, action, targetType = null, targetId = null, details = null) {
+  if (!actorUserId) return;
+  try {
+    await db.run(
+      `insert into admin_audit_logs (id, actor_user_id, action, target_type, target_id, details)
+       values (?, ?, ?, ?, ?, ?)`,
+      [
+        randomUUID(),
+        actorUserId,
+        action,
+        targetType,
+        targetId,
+        details == null ? null : JSON.stringify(details)
+      ]
+    );
+  } catch (error) {
+    console.error("[audit]", error);
+  }
+}
 
 const mapClinicRow = (row, viewerUserId = null) => {
   let secondaryFilters = [];
@@ -562,6 +622,7 @@ app.post("/api/clinics", async (req, res) => {
     ]
   );
 
+  await writeAuditLog(requesterId, "clinic.create", "clinic", id, { name });
   res.status(201).json({ id });
 });
 
@@ -627,6 +688,7 @@ app.put("/api/clinics/:id", async (req, res) => {
     ]
   );
 
+  await writeAuditLog(requesterId, "clinic.update", "clinic", id, { name });
   res.json({ ok: true });
 });
 
@@ -650,6 +712,7 @@ app.delete("/api/clinics/:id", async (req, res) => {
 
   await db.run("delete from shadowing_requests where clinic_id = ?", [id]);
   await db.run("delete from clinics where id = ?", [id]);
+  await writeAuditLog(requesterId, "clinic.delete", "clinic", id, { name: clinic.name });
   res.json({ ok: true });
 });
 
@@ -666,6 +729,7 @@ app.delete("/api/clinics", async (req, res) => {
   }
   await db.run("delete from shadowing_requests");
   const result = await db.run("delete from clinics");
+  await writeAuditLog(requesterId, "clinic.delete_all", "clinic", null, { deleted: result.changes });
   res.json({ ok: true, deleted: result.changes });
 });
 
@@ -748,6 +812,270 @@ app.post("/api/clinics/:id/request", async (req, res) => {
     lockExpiresAt: expiresAtIso,
     clinic: mapClinicRow(updated)
   });
+});
+
+// --- Admin tools ---
+
+const parseDetails = (value) => {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+const mapAuditLogRow = (row) => ({
+  id: row.id,
+  actorUserId: row.actor_user_id,
+  action: row.action,
+  targetType: row.target_type,
+  targetId: row.target_id,
+  details: parseDetails(row.details),
+  createdAt: row.created_at,
+});
+
+const mapQualityFlagRow = (row) => ({
+  id: row.id,
+  clinicId: row.clinic_id,
+  clinicName: row.clinic_name ?? null,
+  flagType: row.flag_type,
+  notes: row.notes ?? "",
+  status: row.status,
+  createdByUserId: row.created_by_user_id,
+  resolvedByUserId: row.resolved_by_user_id,
+  createdAt: row.created_at,
+  resolvedAt: row.resolved_at,
+});
+
+app.get("/api/admin/audit-logs", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(
+    "select * from admin_audit_logs order by created_at desc limit 100"
+  );
+  res.json(rows.map(mapAuditLogRow));
+});
+
+app.get("/api/admin/reserves", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(`
+    select
+      c.id as clinic_id,
+      c.name as clinic_name,
+      c.shadowing_status,
+      c.lock_expires_at,
+      c.locked_by_request_id,
+      r.user_id,
+      r.created_at,
+      r.reserve_units
+    from clinics c
+    left join shadowing_requests r on r.id = c.locked_by_request_id
+    where c.lock_expires_at is not null and c.lock_expires_at > ?
+    order by c.lock_expires_at asc
+  `, [new Date().toISOString()]);
+
+  res.json(rows.map((row) => ({
+    requestId: row.locked_by_request_id,
+    clinicId: row.clinic_id,
+    clinicName: row.clinic_name,
+    shadowingStatus: row.shadowing_status,
+    userId: row.user_id || null,
+    createdAt: row.created_at || null,
+    lockExpiresAt: row.lock_expires_at,
+    reserveUnits: row.reserve_units ?? 1,
+    isLegacy: !row.user_id,
+  })));
+});
+
+app.delete("/api/admin/reserves/:requestId", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const { requestId } = req.params;
+  const clinic = await db.get(
+    "select id, name from clinics where locked_by_request_id = ?",
+    [requestId]
+  );
+  if (!clinic) {
+    sendError(req, res, 404, "Reserve not found.");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  await db.run("update shadowing_requests set lock_expires_at = ? where id = ?", [now, requestId]);
+  await db.run(
+    "update clinics set lock_expires_at = null, locked_by_request_id = null where locked_by_request_id = ?",
+    [requestId]
+  );
+  await writeAuditLog(adminId, "reserve.unreserve", "shadowing_request", requestId, {
+    clinicId: clinic.id,
+    clinicName: clinic.name,
+  });
+
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/quality-flags", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(`
+    select f.*, c.name as clinic_name
+    from clinic_quality_flags f
+    left join clinics c on c.id = f.clinic_id
+    order by
+      case when f.status = 'open' then 0 else 1 end,
+      f.created_at desc
+  `);
+  res.json(rows.map(mapQualityFlagRow));
+});
+
+app.post("/api/admin/quality-flags", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const { clinicId, clinic_id: clinicIdLegacy, flagType, flag_type: flagTypeLegacy, notes } = req.body ?? {};
+  const targetClinicId = clinicId || clinicIdLegacy;
+  const targetFlagType = flagType || flagTypeLegacy;
+  if (!targetClinicId || !targetFlagType) {
+    sendError(req, res, 400, "Clinic and flag type are required.");
+    return;
+  }
+
+  const clinic = await db.get("select id, name from clinics where id = ?", [targetClinicId]);
+  if (!clinic) {
+    sendError(req, res, 404, "Clinic not found.");
+    return;
+  }
+
+  const id = randomUUID();
+  await db.run(
+    `insert into clinic_quality_flags (id, clinic_id, flag_type, notes, created_by_user_id)
+     values (?, ?, ?, ?, ?)`,
+    [id, targetClinicId, targetFlagType, notes ?? "", adminId]
+  );
+  await writeAuditLog(adminId, "quality_flag.create", "clinic_quality_flag", id, {
+    clinicId: targetClinicId,
+    clinicName: clinic.name,
+    flagType: targetFlagType,
+  });
+  res.status(201).json({ id });
+});
+
+app.put("/api/admin/quality-flags/:id/resolve", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const { id } = req.params;
+  const result = await db.run(
+    `update clinic_quality_flags
+       set status = 'resolved', resolved_by_user_id = ?, resolved_at = ?
+     where id = ?`,
+    [adminId, new Date().toISOString(), id]
+  );
+  if (!result.changes) {
+    sendError(req, res, 404, "Flag not found.");
+    return;
+  }
+  await writeAuditLog(adminId, "quality_flag.resolve", "clinic_quality_flag", id);
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/quality-flags/:id", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const { id } = req.params;
+  const result = await db.run("delete from clinic_quality_flags where id = ?", [id]);
+  if (!result.changes) {
+    sendError(req, res, 404, "Flag not found.");
+    return;
+  }
+  await writeAuditLog(adminId, "quality_flag.delete", "clinic_quality_flag", id);
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/cleanup/expired-reserves", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const now = new Date().toISOString();
+  const clinicsResult = await db.run(
+    `update clinics
+       set lock_expires_at = null, locked_by_request_id = null
+     where lock_expires_at is not null and lock_expires_at <= ?`,
+    [now]
+  );
+  const requestsResult = await db.run(
+    "delete from shadowing_requests where lock_expires_at is not null and lock_expires_at <= ?",
+    [now]
+  );
+  const result = {
+    unlockedClinics: clinicsResult.changes ?? 0,
+    deletedRequests: requestsResult.changes ?? 0,
+  };
+  await writeAuditLog(adminId, "cleanup.expired_reserves", "cleanup", null, result);
+  res.json({ ok: true, ...result });
+});
+
+app.get("/api/admin/cleanup/duplicates", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(`
+    select lower(trim(name)) as normalized_name, count(*) as count, group_concat(id, '|') as clinic_ids, group_concat(name, '|') as clinic_names
+    from clinics
+    group by lower(trim(name))
+    having count(*) > 1
+    order by count desc, normalized_name asc
+  `);
+  res.json(rows.map((row) => ({
+    normalizedName: row.normalized_name,
+    count: row.count,
+    clinicIds: row.clinic_ids ? row.clinic_ids.split("|") : [],
+    clinicNames: row.clinic_names ? row.clinic_names.split("|") : [],
+  })));
+});
+
+app.get("/api/admin/cleanup/missing-contact", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(`
+    select id, name, phone, email, shadowing_status
+    from clinics
+    where coalesce(trim(phone), '') = '' and coalesce(trim(email), '') = ''
+    order by name asc
+  `);
+  res.json(rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    email: row.email,
+    shadowingStatus: row.shadowing_status,
+  })));
+});
+
+app.get("/api/admin/cleanup/stale-clinics", async (req, res) => {
+  const adminId = await requireAdmin(req, res);
+  if (!adminId) return;
+
+  const rows = await db.all(`
+    select id, name, last_verified_at, shadowing_status
+    from clinics
+    where last_verified_at is null or last_verified_at < date('now', '-180 days')
+    order by last_verified_at asc, name asc
+  `);
+  res.json(rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    lastVerifiedAt: row.last_verified_at,
+    shadowingStatus: row.shadowing_status,
+  })));
 });
 
 // --- Experiences (Dental Shadowing Tracker) ---

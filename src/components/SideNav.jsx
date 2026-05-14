@@ -49,6 +49,17 @@ const NAV_ITEMS = [
   },
 ];
 
+const ADMIN_NAV_ITEM = {
+  id: "admin",
+  label: "Admin",
+  icon: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 1.5l5 2v3.3c0 3.2-1.9 6.1-5 7.7-3.1-1.6-5-4.5-5-7.7V3.5l5-2z" opacity="0.25"/>
+      <path d="M8 3l3.5 1.4v2.4c0 2.3-1.3 4.3-3.5 5.6-2.2-1.3-3.5-3.3-3.5-5.6V4.4L8 3z"/>
+    </svg>
+  ),
+};
+
 export default function SideNav({
   activePage,
   onNavigate,
@@ -59,6 +70,8 @@ export default function SideNav({
   adminMode = false,
   onAdminModeChange
 }) {
+  const navItems = adminMode ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+
   return (
     <aside className="nav">
       <button
@@ -73,7 +86,7 @@ export default function SideNav({
 
       <div className="nav__bar">
         <nav className="nav__menu">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <button
               key={item.id}
               type="button"

@@ -204,6 +204,97 @@ a { color: var(--accent); }
   text-underline-offset: 2px;
 }
 
+.admin-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.admin-card {
+  min-width: 0;
+}
+.admin-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.admin-card__head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.admin-alert {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--r);
+  font-size: 0.86rem;
+}
+.admin-alert--error {
+  color: var(--danger);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+.admin-alert--success {
+  color: var(--success);
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+}
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 420px;
+  overflow: auto;
+}
+.admin-list--compact {
+  margin-top: 0.75rem;
+  max-height: 300px;
+}
+.admin-list--audit {
+  max-height: 520px;
+}
+.admin-list__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--border-light);
+}
+.admin-list__item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.admin-list__item strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.admin-actions,
+.admin-tool-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.admin-flag-form {
+  display: grid;
+  gap: 0.5rem;
+}
+.admin-flag-form textarea {
+  resize: vertical;
+}
+.admin-cleanup-results {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
 .map-mock {
   position: relative;
   width: 100%;
@@ -1685,6 +1776,9 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 @media (max-width: 900px) {
   .intro-feature,
   .intro-feature--reverse {
+    grid-template-columns: 1fr;
+  }
+  .admin-grid {
     grid-template-columns: 1fr;
   }
   .tracker__add-actions { grid-template-columns: 1fr; }

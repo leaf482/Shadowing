@@ -11,6 +11,7 @@ import GuidePage from "./components/GuidePage.jsx";
 import TrackerPage from "./components/TrackerPage.jsx";
 import IntroPage from "./components/IntroPage.jsx";
 import LoginPage from "./components/LoginPage.jsx";
+import AdminPage from "./components/AdminPage.jsx";
 
 const STATUS_LABELS = {
   available: "Shadowing available",
@@ -81,15 +82,17 @@ export default function App() {
     if (!authReady) return;
     const page = parseHash();
     if (!authenticated) {
-      if (MAIN_PAGES.includes(page)) {
+      if (MAIN_PAGES.includes(page) || page === "admin") {
         window.location.hash = "intro";
       }
     } else {
       if (page === "intro" || page === "login") {
         window.location.hash = "dashboard";
+      } else if (page === "admin" && (!isAdmin || !adminMode)) {
+        window.location.hash = "dashboard";
       }
     }
-  }, [authReady, authenticated, activePage]);
+  }, [authReady, authenticated, activePage, isAdmin, adminMode]);
 
   const handleNavigate = (page) => {
     window.location.hash = page;
@@ -203,7 +206,8 @@ export default function App() {
     return <IntroPage onGetStarted={handleGetStarted} />;
   }
 
-  const mainPage = MAIN_PAGES.includes(activePage) ? activePage : "dashboard";
+  const allowedPages = isAdmin && adminMode ? [...MAIN_PAGES, "admin"] : MAIN_PAGES;
+  const mainPage = allowedPages.includes(activePage) ? activePage : "dashboard";
 
   return (
     <div className="layout">
@@ -238,7 +242,9 @@ export default function App() {
             <span className="dev-notice__text">This site is still in development; features and data may change.</span>
           </div>
         </div>
-        {mainPage === "tracker" ? (
+        {mainPage === "admin" ? (
+          <AdminPage clinics={clinics} />
+        ) : mainPage === "tracker" ? (
           <TrackerPage />
         ) : mainPage === "clinics" ? (
           <ClinicsPage
