@@ -4,8 +4,13 @@
  *
  *   set STATIC_BUCKET=your-bucket-from-stack
  *   set AWS_REGION=us-west-2
+ *   set CLOUDFRONT_DISTRIBUTION_ID=E123…   (optional — invalidates /* after upload)
  *   node scripts/sync-static-cdn.mjs
  */
+import {
+  CloudFrontClient,
+  CreateInvalidationCommand
+} from "@aws-sdk/client-cloudfront";
 import { readFile } from "fs/promises";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { readdirSync, statSync } from "fs";
@@ -100,7 +105,32 @@ async function main() {
     console.warn("skipped clinics.json (run npm run build to generate)");
   }
 
-  console.log(`Done. Invalidate CloudFront if needed: aws cloudfront create-invalidation --distribution-id ID --paths "/*"`);
+  const cfDistId =
+    process.env.CLOUDFRONT_DISTRIBUTION_ID || process.env.CF_DISTRIBUTION_ID;
+  if (cfDistId) {
+    const cf = new CloudFrontClient({ region: "us-east-1" });
+    const callerReference = `shadowing-static-${Date.now()}`;
+    const inv = await cf.send(
+      new CreateInvalidationCommand({
+        DistributionId: cfDistId,
+        InvalidationBatch: {
+          CallerReference: callerReference,
+          Paths: { Quantity: 1, Items: ["/*"] }
+        }
+      })
+    );
+    console.log(
+      "CloudFront invalidation:",
+      inv.Invalidation?.Id,
+      `(${inv.Invalidation?.Status})`
+    );
+  } else {
+    console.log(
+      "Tip: set CLOUDFRONT_DISTRIBUTION_ID to invalidate /* after upload, or run: aws cloudfront create-invalidation --distribution-id ID --paths \"/*\""
+    );
+  }
+
+  console.log("Done.");
 }
 
 main().catch((err) => {
