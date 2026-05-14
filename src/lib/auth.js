@@ -109,7 +109,7 @@ export async function restoreSessionFromServer() {
     const res = await authFetch("/api/auth/session", { skipAuthRedirect: true });
     if (!res.ok) {
       clearLocalSessionStorage();
-      return false;
+      return { authenticated: false, isAdmin: false };
     }
     const data = await res.json().catch(() => ({}));
     if (data?.email) {

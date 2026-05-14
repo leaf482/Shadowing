@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
 import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer, formatApiErrorMessage } from "./lib/auth.js";
+import { fetchClinicDataset } from "./lib/clinicDataset.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
 import ClinicTrackerPanel from "./components/ClinicTrackerPanel.jsx";
@@ -14,31 +15,6 @@ import AdminPage from "./components/AdminPage.jsx";
 import WelcomeGate from "./components/WelcomeGate.jsx";
 
 const MapPanel = lazy(() => import("./components/MapPanel.jsx"));
-
-function mergeLockOverlay(base, locksPayload) {
-  const lockMap = new Map(locksPayload.map((x) => [x.id, x]));
-  return base.map((c) => {
-    const L = lockMap.get(c.id);
-    return {
-      ...c,
-      lockExpiresAt: L?.lockExpiresAt ?? null,
-      lockedByRequestId: L?.lockedByRequestId ?? null
-    };
-  });
-}
-
-function mergeSessionOverlay(merged, overlayList) {
-  const m = new Map(overlayList.map((x) => [x.id, x]));
-  return merged.map((c) => {
-    const o = m.get(c.id);
-    if (!o) return c;
-    return {
-      ...c,
-      ownedByCurrentUser: o.ownedByCurrentUser,
-      canManage: o.canManage
-    };
-  });
-}
 
 const STATUS_LABELS = {
   available: "Shadowing available",
@@ -159,48 +135,6 @@ export default function App() {
     setSelectedClinicId(clinicId);
   };
 
-  const fetchClinicDataset = async () => {
-    /** Prefer live API so dashboard counts match Dynamo; clinics.json is a CDN snapshot and can lag after edits. */
-    let snapshot;
-
-    const apiListRes = await fetch("/api/clinics", {
-      credentials: "same-origin",
-      cache: "no-store"
-    });
-    if (apiListRes.ok) {
-      snapshot = await apiListRes.json();
-    } else {
-      const snapRes = await fetch("/clinics.json", {
-        cache: "no-store",
-        credentials: "same-origin"
-      });
-      if (!snapRes.ok) {
-        const message = await formatApiErrorMessage(
-          apiListRes,
-          "Failed to load clinics."
-        );
-        throw new Error(message);
-      }
-      snapshot = await snapRes.json();
-    }
-
-    if (!Array.isArray(snapshot)) snapshot = [];
-
-    const locksRes = await fetch("/api/clinics/locks");
-    const locksPayload = locksRes.ok ? await locksRes.json() : [];
-    let merged = mergeLockOverlay(snapshot, locksPayload);
-
-    const overlayRes = await fetch("/api/clinics/session-overlay", {
-      credentials: "include"
-    });
-    if (overlayRes.ok) {
-      const body = await overlayRes.json();
-      merged = mergeSessionOverlay(merged, body.clinics ?? []);
-    }
-
-    return merged;
-  };
-
   const refreshData = async () => {
     setIsLoading(true);
     setLoadError("");
@@ -212,7 +146,7 @@ export default function App() {
         return clinicRows.length > 0 ? clinicRows[0].id : null;
       });
     } catch (error) {
-      setLoadError(error?.message || "Could not load data from SQLite server.");
+      setLoadError(error?.message || "Could not load clinic data. Try again in a moment.");
       setClinics([]);
     } finally {
       setIsLoading(false);
