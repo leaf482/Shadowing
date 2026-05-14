@@ -184,6 +184,7 @@ Resources:
           NODE_ENV: production
           DATA_BACKEND: dynamo
           PORT: "3000"
+          API_GATEWAY_STAGE: !Ref Stage
           TABLE_CLINICS: !Ref ClinicsTable
           TABLE_USERS: !Ref UsersTable
           TABLE_AUTH_SESSIONS: !Ref AuthSessionsTable

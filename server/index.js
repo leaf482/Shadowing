@@ -12,6 +12,9 @@ const __dirname = dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 
+/** HTTP API stage path prefix (e.g. /dev) — present when Lambda is behind API Gateway. */
+const API_GATEWAY_STAGE = (process.env.API_GATEWAY_STAGE || "").trim();
+
 function envInt(name, fallback) {
   const raw = process.env[name];
   if (raw == null || raw === "") return fallback;
@@ -124,6 +127,25 @@ app.use((req, res, next) => {
   res.setHeader("X-Request-Id", requestId);
   next();
 });
+
+if (process.env.AWS_EXECUTION_ENV && API_GATEWAY_STAGE && API_GATEWAY_STAGE !== "$default") {
+  app.use((req, _res, next) => {
+    const prefix = `/${API_GATEWAY_STAGE}`;
+    const raw = req.originalUrl || req.url || "/";
+    const qIdx = raw.indexOf("?");
+    const pathOnly = qIdx === -1 ? raw : raw.slice(0, qIdx);
+    const qs = qIdx === -1 ? "" : raw.slice(qIdx);
+    if (pathOnly !== prefix && !pathOnly.startsWith(`${prefix}/`)) {
+      next();
+      return;
+    }
+    const rest = pathOnly === prefix ? "/" : pathOnly.slice(prefix.length);
+    req.url = rest + qs;
+    req.originalUrl = req.url;
+    next();
+  });
+}
+
 app.use(express.json());
 app.use(
   express.static(join(__dirname, "../dist"), {
