@@ -53,6 +53,66 @@ Resources:
           QueryStringsConfig:
             QueryStringBehavior: none
 
+  NoCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub "${AWS::StackName}-nocache"
+        Comment: HTML + API — always revalidate origin
+        DefaultTTL: 0
+        MaxTTL: 86400
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  AssetsLongCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub "${AWS::StackName}-assets"
+        Comment: Hashed Vite assets — cache at edge
+        DefaultTTL: 31536000
+        MaxTTL: 31536000
+        MinTTL: 86400
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  ApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "${AWS::StackName}-api-origin"
+        Comment: Cookies + query + headers for Lambda API (Host set by CloudFront to origin)
+        CookiesConfig:
+          CookieBehavior: all
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers:
+            - Authorization
+            - Content-Type
+            - Accept
+            - Accept-Language
+            - Origin
+            - Referer
+            - X-Requested-With
+            - X-Request-Id
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -85,7 +145,7 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
-          CachePolicyId: 413f27f8-10da-4fcb-b41e-ebc82279601e
+          CachePolicyId: !Ref NoCachePolicy
         CacheBehaviors:
           - PathPattern: /assets/*
             TargetOriginId: S3Site
@@ -98,7 +158,7 @@ Resources:
             CachedMethods:
               - GET
               - HEAD
-            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            CachePolicyId: !Ref AssetsLongCachePolicy
           - PathPattern: /clinics.json
             TargetOriginId: S3Site
             ViewerProtocolPolicy: redirect-to-https
@@ -126,8 +186,8 @@ Resources:
             CachedMethods:
               - GET
               - HEAD
-            CachePolicyId: 413f27f8-10da-4fcb-b41e-ebc82279601e
-            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            CachePolicyId: !Ref NoCachePolicy
+            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
