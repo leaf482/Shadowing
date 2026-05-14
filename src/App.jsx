@@ -160,18 +160,31 @@ export default function App() {
   };
 
   const fetchClinicDataset = async () => {
-    const snapRes = await fetch("/clinics.json");
+    /** Prefer live API so dashboard counts match Dynamo; clinics.json is a CDN snapshot and can lag after edits. */
     let snapshot;
-    if (snapRes.ok) {
-      snapshot = await snapRes.json();
+
+    const apiListRes = await fetch("/api/clinics", {
+      credentials: "same-origin",
+      cache: "no-store"
+    });
+    if (apiListRes.ok) {
+      snapshot = await apiListRes.json();
     } else {
-      const response = await fetch("/api/clinics");
-      if (!response.ok) {
-        const message = await formatApiErrorMessage(response, "Failed to load clinics.");
+      const snapRes = await fetch("/clinics.json", {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!snapRes.ok) {
+        const message = await formatApiErrorMessage(
+          apiListRes,
+          "Failed to load clinics."
+        );
         throw new Error(message);
       }
-      return response.json();
+      snapshot = await snapRes.json();
     }
+
+    if (!Array.isArray(snapshot)) snapshot = [];
 
     const locksRes = await fetch("/api/clinics/locks");
     const locksPayload = locksRes.ok ? await locksRes.json() : [];

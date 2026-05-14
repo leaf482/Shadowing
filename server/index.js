@@ -393,6 +393,7 @@ app.get("/api/clinics/session-overlay", async (req, res) => {
 app.get("/api/clinics", async (req, res) => {
   const viewerUserId = await getUserIdFromToken(req);
   const rows = await repos.clinics.selectAllOrdered();
+  res.setHeader("Cache-Control", "private, no-store");
   res.json(rows.map((row) => mapClinicRow(row, viewerUserId)));
 });
 
