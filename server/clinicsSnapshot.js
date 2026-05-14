@@ -35,9 +35,3 @@ export async function writeClinicsSnapshotRows(rows, filePath) {
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload)}\n`, "utf8");
 }
-
-/** @deprecated prefer writeClinicsSnapshotRows + repos */
-export async function writeClinicsSnapshotFile(db, filePath) {
-  const rows = await db.all("select * from clinics order by name");
-  await writeClinicsSnapshotRows(rows, filePath);
-}

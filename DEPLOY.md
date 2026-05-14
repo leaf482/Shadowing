@@ -125,7 +125,7 @@ Notes:
 
 ```bash
 cd /home/ubuntu/shadowing
-pm2 start ecosystem.config.cjs --env production
+pm2 start server/index.js --name shadowing --env production
 pm2 save               # persist across reboots
 pm2 startup            # follow the printed command to enable on boot
 ```

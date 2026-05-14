@@ -2,6 +2,9 @@ node_modules/
 dist/
 .env
 .env.*.local
+.env.bak.*
 *.log
 server/shadowing.db
 server/generated/clinics.json
+infra/sam/.aws-sam/
+.aws-sam/
