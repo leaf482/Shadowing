@@ -14,6 +14,7 @@
     "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "dev:all": "npm run dev:seed && npm run dev:full",
     "build": "node scripts/export-clinics-static.mjs && vite build",
+    "generate:intro-map": "node scripts/generate-intro-map-tacoma.mjs",
     "preview": "vite preview",
     "test:smoke:auth": "node --test server/auth.smoke.test.mjs",
     "migrate:dynamo": "node scripts/migrate-sqlite-to-dynamo.mjs",
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "sharp": "^0.34.5",
     "vite": "^5.4.6"
   }
 }

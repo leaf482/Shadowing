@@ -1,56 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import logoImg from "../logo/logo.png";
-
-const IntroMapPreview = lazy(() => import("./IntroMapPreview.jsx"));
-
-function IntroMapPreviewLazy() {
-  const containerRef = useRef(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    if (typeof IntersectionObserver === "undefined") {
-      setShouldLoad(true);
-      return;
-    }
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setShouldLoad(true);
-          io.disconnect();
-        }
-      },
-      { root: null, rootMargin: "120px 0px", threshold: 0.02 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={containerRef}
-      className="intro-feature__media intro-feature__media--map"
-      aria-hidden="true"
-    >
-      {shouldLoad ? (
-        <Suspense
-          fallback={
-            <div className="intro-map-preview intro-map-preview--fallback muted small">
-              Loading map preview…
-            </div>
-          }
-        >
-          <IntroMapPreview />
-        </Suspense>
-      ) : (
-        <div className="intro-map-preview intro-map-preview--fallback" aria-hidden />
-      )}
-    </div>
-  );
-}
+import IntroMapPreview from "./IntroMapPreview.jsx";
 
 export default function IntroPage({ onGetStarted }) {
   return (
@@ -81,7 +30,12 @@ export default function IntroPage({ onGetStarted }) {
         </div>
 
         <article className="intro-feature">
-          <IntroMapPreviewLazy />
+          <div
+            className="intro-feature__media intro-feature__media--map"
+            aria-hidden="true"
+          >
+            <IntroMapPreview />
+          </div>
           <div className="intro-feature__content">
             <h3>Verified Shadowing Map</h3>
             <p>
