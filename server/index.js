@@ -1,3 +1,4 @@
+import compression from "compression";
 import express from "express";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { open } from "sqlite";
@@ -5,6 +6,7 @@ import sqlite3 from "sqlite3";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { toAadsasRecords, toCsv } from "./export.js";
+import { writeClinicsSnapshotFile } from "./clinicsSnapshot.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -113,6 +115,9 @@ function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
 
 const app = express();
 app.set("trust proxy", 1);
+if (process.env.NODE_ENV === "production") {
+  app.use(compression());
+}
 app.use((req, res, next) => {
   const inboundId = req.headers["x-request-id"];
   const requestId = typeof inboundId === "string" && inboundId.trim()
@@ -123,7 +128,23 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
-app.use(express.static(join(__dirname, "../dist")));
+app.use(
+  express.static(join(__dirname, "../dist"), {
+    etag: true,
+    lastModified: true,
+    setHeaders(res, filePath) {
+      if (process.env.NODE_ENV !== "production") return;
+      const normalized = filePath.replace(/\\/g, "/");
+      if (normalized.includes("/assets/")) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (normalized.endsWith("index.html")) {
+        res.setHeader("Cache-Control", "no-cache");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=86400");
+      }
+    }
+  })
+);
 
 const openDb = async () => {
   const db = await open({
@@ -487,6 +508,18 @@ const mapClinicRow = (row, viewerUserId = null) => {
 
 const db = await openDb();
 
+const CLINICS_SNAPSHOT_PATH = join(__dirname, "generated", "clinics.json");
+
+async function refreshClinicsSnapshot() {
+  try {
+    await writeClinicsSnapshotFile(db, CLINICS_SNAPSHOT_PATH);
+  } catch (error) {
+    console.error("[clinics snapshot]", error);
+  }
+}
+
+await refreshClinicsSnapshot();
+
 function parseCookies(req) {
   const rawCookie = req.headers.cookie;
   if (!rawCookie) return {};
@@ -564,6 +597,51 @@ async function getUserIdFromToken(req) {
   return row.user_id;
 }
 
+app.get("/clinics.json", (req, res, next) => {
+  res.type("application/json");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+  } else {
+    res.setHeader("Cache-Control", "no-store");
+  }
+  res.sendFile(CLINICS_SNAPSHOT_PATH, (err) => {
+    if (err) next(err);
+  });
+});
+
+app.get("/api/clinics/locks", async (req, res) => {
+  const rows = await db.all("select id, lock_expires_at, locked_by_request_id from clinics");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Cache-Control", "public, max-age=15");
+  } else {
+    res.setHeader("Cache-Control", "no-store");
+  }
+  res.json(
+    rows.map((row) => ({
+      id: row.id,
+      lockExpiresAt: row.lock_expires_at ?? null,
+      lockedByRequestId: row.locked_by_request_id ?? null
+    }))
+  );
+});
+
+app.get("/api/clinics/session-overlay", async (req, res) => {
+  const viewerUserId = await getUserIdFromToken(req);
+  res.setHeader("Cache-Control", "private, no-store");
+  if (!viewerUserId) {
+    res.json({ clinics: [] });
+    return;
+  }
+  const rows = await db.all("select id, created_by_user_id from clinics");
+  res.json({
+    clinics: rows.map((row) => ({
+      id: row.id,
+      ownedByCurrentUser: row.created_by_user_id === viewerUserId,
+      canManage: canManageClinic(row, viewerUserId)
+    }))
+  });
+});
+
 app.get("/api/clinics", async (req, res) => {
   const viewerUserId = await getUserIdFromToken(req);
   const rows = await db.all("select * from clinics order by name");
@@ -623,6 +701,7 @@ app.post("/api/clinics", async (req, res) => {
   );
 
   await writeAuditLog(requesterId, "clinic.create", "clinic", id, { name });
+  void refreshClinicsSnapshot();
   res.status(201).json({ id });
 });
 
@@ -689,6 +768,7 @@ app.put("/api/clinics/:id", async (req, res) => {
   );
 
   await writeAuditLog(requesterId, "clinic.update", "clinic", id, { name });
+  void refreshClinicsSnapshot();
   res.json({ ok: true });
 });
 
@@ -713,6 +793,7 @@ app.delete("/api/clinics/:id", async (req, res) => {
   await db.run("delete from shadowing_requests where clinic_id = ?", [id]);
   await db.run("delete from clinics where id = ?", [id]);
   await writeAuditLog(requesterId, "clinic.delete", "clinic", id, { name: clinic.name });
+  void refreshClinicsSnapshot();
   res.json({ ok: true });
 });
 
@@ -730,6 +811,7 @@ app.delete("/api/clinics", async (req, res) => {
   await db.run("delete from shadowing_requests");
   const result = await db.run("delete from clinics");
   await writeAuditLog(requesterId, "clinic.delete_all", "clinic", null, { deleted: result.changes });
+  void refreshClinicsSnapshot();
   res.json({ ok: true, deleted: result.changes });
 });
 
@@ -2124,6 +2206,7 @@ app.get("*", (_req, res) => {
   res.sendFile(join(__dirname, "../dist/index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+// Bind loopback only — Caddy proxies from :443; avoids exposing the API on :3000 publicly.
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`Server listening on 127.0.0.1:${PORT}`);
 });

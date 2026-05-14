@@ -13,11 +13,12 @@
     "dev:seed": "node server/seed.js",
     "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "dev:all": "npm run dev:seed && npm run dev:full",
-    "build": "vite build",
+    "build": "node scripts/export-clinics-static.mjs && vite build",
     "preview": "vite preview",
     "test:smoke:auth": "node --test server/auth.smoke.test.mjs"
   },
   "dependencies": {
+    "compression": "^1.8.1",
     "concurrently": "^8.2.2",
     "express": "^4.19.2",
     "leaflet": "^1.9.4",

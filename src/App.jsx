@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
 import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer, formatApiErrorMessage } from "./lib/auth.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
-import MapPanel from "./components/MapPanel.jsx";
 import ClinicTrackerPanel from "./components/ClinicTrackerPanel.jsx";
 import ClinicsPage from "./components/ClinicsPage.jsx";
 import GuidePage from "./components/GuidePage.jsx";
@@ -12,6 +11,33 @@ import TrackerPage from "./components/TrackerPage.jsx";
 import IntroPage from "./components/IntroPage.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import AdminPage from "./components/AdminPage.jsx";
+
+const MapPanel = lazy(() => import("./components/MapPanel.jsx"));
+
+function mergeLockOverlay(base, locksPayload) {
+  const lockMap = new Map(locksPayload.map((x) => [x.id, x]));
+  return base.map((c) => {
+    const L = lockMap.get(c.id);
+    return {
+      ...c,
+      lockExpiresAt: L?.lockExpiresAt ?? null,
+      lockedByRequestId: L?.lockedByRequestId ?? null
+    };
+  });
+}
+
+function mergeSessionOverlay(merged, overlayList) {
+  const m = new Map(overlayList.map((x) => [x.id, x]));
+  return merged.map((c) => {
+    const o = m.get(c.id);
+    if (!o) return c;
+    return {
+      ...c,
+      ownedByCurrentUser: o.ownedByCurrentUser,
+      canManage: o.canManage
+    };
+  });
+}
 
 const STATUS_LABELS = {
   available: "Shadowing available",
@@ -132,24 +158,45 @@ export default function App() {
     setSelectedClinicId(clinicId);
   };
 
-  const fetchClinics = async () => {
-    const response = await fetch("/api/clinics");
-    if (!response.ok) {
-      const message = await formatApiErrorMessage(response, "Failed to load clinics.");
-      throw new Error(message);
+  const fetchClinicDataset = async () => {
+    const snapRes = await fetch("/clinics.json");
+    let snapshot;
+    if (snapRes.ok) {
+      snapshot = await snapRes.json();
+    } else {
+      const response = await fetch("/api/clinics");
+      if (!response.ok) {
+        const message = await formatApiErrorMessage(response, "Failed to load clinics.");
+        throw new Error(message);
+      }
+      return response.json();
     }
-    return response.json();
+
+    const locksRes = await fetch("/api/clinics/locks");
+    const locksPayload = locksRes.ok ? await locksRes.json() : [];
+    let merged = mergeLockOverlay(snapshot, locksPayload);
+
+    const overlayRes = await fetch("/api/clinics/session-overlay", {
+      credentials: "include"
+    });
+    if (overlayRes.ok) {
+      const body = await overlayRes.json();
+      merged = mergeSessionOverlay(merged, body.clinics ?? []);
+    }
+
+    return merged;
   };
 
   const refreshData = async () => {
     setIsLoading(true);
     setLoadError("");
     try {
-      const clinicRows = await fetchClinics();
+      const clinicRows = await fetchClinicDataset();
       setClinics(clinicRows);
-      if (!selectedClinicId && clinicRows.length > 0) {
-        setSelectedClinicId(clinicRows[0].id);
-      }
+      setSelectedClinicId((prev) => {
+        if (prev && clinicRows.some((c) => c.id === prev)) return prev;
+        return clinicRows.length > 0 ? clinicRows[0].id : null;
+      });
     } catch (error) {
       setLoadError(error?.message || "Could not load data from SQLite server.");
       setClinics([]);
@@ -159,8 +206,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!authReady || !authenticated) return;
     refreshData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when session gate opens
+  }, [authReady, authenticated]);
 
   const handleCreateSubmission = async (payload) => {
     const isUpdate = payload.type === "update" && payload.clinicId;
@@ -316,11 +365,19 @@ export default function App() {
                   />
                 </section>
                 <section className="dash-grid__map panel panel--map">
-                  <MapPanel
-                    clinics={clinics}
-                    selectedClinicId={selectedClinicId}
-                    onSelectClinic={handleSelectClinic}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="muted small" style={{ padding: "1rem" }}>
+                        Loading map…
+                      </div>
+                    }
+                  >
+                    <MapPanel
+                      clinics={clinics}
+                      selectedClinicId={selectedClinicId}
+                      onSelectClinic={handleSelectClinic}
+                    />
+                  </Suspense>
                 </section>
                 <section className="dash-grid__details">
                   <ClinicTrackerPanel
