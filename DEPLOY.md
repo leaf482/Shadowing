@@ -53,6 +53,15 @@ rsync -avz --exclude node_modules --exclude dist --exclude '*.db' \
   ./ ubuntu@YOUR_SERVER_IP:/home/ubuntu/shadowing/
 ```
 
+**Git authentication (recommended):** Do not embed a GitHub username or personal access token in the `origin` URL (`https://user:token@github.com/...` exposes credentials in `.git/config` and logs). Prefer SSH (`git@github.com:USER/Shadowing.git`) with a deploy key or your existing key. If outbound SSH on port 22 is blocked (common on some networks), use GitHub’s SSH on port 443 by adding `~/.ssh/config`:
+
+```
+Host github.com
+  Hostname ssh.github.com
+  Port 443
+  User git
+```
+
 ---
 
 ## 5. Install dependencies and build
