@@ -14,6 +14,10 @@ Parameters:
   Stage:
     Type: String
     Default: dev
+  AdminEmails:
+    Type: String
+    Default: ""
+    Description: Comma-separated admin emails for ADMIN_EMAILS (optional).
 
 Resources:
   ClinicsTable:
@@ -189,7 +193,7 @@ Resources:
           TABLE_PLACEMENT_SESSIONS: !Ref PlacementSessionsTable
           TABLE_AUDIT_LOGS: !Ref AuditLogsTable
           TABLE_QUALITY_FLAGS: !Ref QualityFlagsTable
-          ADMIN_EMAILS: ""
+          ADMIN_EMAILS: !Ref AdminEmails
       Events:
         ApiRoot:
           Type: HttpApi
