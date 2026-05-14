@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PRIMARY_SPECIALTIES, SECONDARY_FILTERS } from "../data/specialties.js";
 
 const EMPTY_FORM = {
@@ -15,17 +15,47 @@ const EMPTY_FORM = {
   zip: ""
 };
 
+function formStateFromClinic(clinic) {
+  if (!clinic) return EMPTY_FORM;
+  return {
+    name: clinic.name ?? "",
+    address: clinic.address ?? "",
+    phone: clinic.phone ?? "",
+    email: clinic.email ?? "",
+    lat: clinic.lat ?? "",
+    lng: clinic.lng ?? "",
+    shadowingStatus: clinic.shadowingStatus ?? "mixed",
+    primarySpecialty: clinic.primarySpecialty ?? "gp",
+    secondaryFilter: Array.isArray(clinic.secondaryFilters) && clinic.secondaryFilters.length
+      ? clinic.secondaryFilters[0]
+      : "all",
+    notes: clinic.notes ?? "",
+    zip: clinic.zip ?? ""
+  };
+}
+
 export default function ClinicForm({
   clinics,
   statusOptions,
   onSubmit,
-  centerFallback
+  centerFallback,
+  initialClinic = null,
+  submitLabel = "Save clinic",
+  onCancel
 }) {
-  const [formState, setFormState] = useState(EMPTY_FORM);
+  const [formState, setFormState] = useState(() => formStateFromClinic(initialClinic));
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState("idle");
   const [searchError, setSearchError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    setFormState(formStateFromClinic(initialClinic));
+    setSearchQuery("");
+    setSearchResults([]);
+    setSubmitError("");
+  }, [initialClinic]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -95,9 +125,6 @@ export default function ClinicForm({
     }));
     setSearchResults([]);
   };
-
-  const [submitError, setSubmitError] = useState("");
-
   const geocodeAddress = async (address) => {
     try {
       const res = await fetch(
@@ -156,12 +183,14 @@ export default function ClinicForm({
     };
 
     onSubmit({
-      type: "new",
-      clinicId: null,
+      type: initialClinic?.id ? "update" : "new",
+      clinicId: initialClinic?.id ?? null,
       proposed
     });
 
-    setFormState(EMPTY_FORM);
+    if (!initialClinic) {
+      setFormState(EMPTY_FORM);
+    }
   };
 
   return (
@@ -348,9 +377,16 @@ export default function ClinicForm({
             {submitError}
           </p>
         )}
-        <button className="primary-button" type="submit" style={{ width: "100%", justifyContent: "center" }}>
-          Save clinic
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button className="primary-button" type="submit" style={{ flex: 1, justifyContent: "center" }}>
+            {submitLabel}
+          </button>
+          {onCancel && (
+            <button className="secondary-button" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
     </form>

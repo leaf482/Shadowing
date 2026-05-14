@@ -25,8 +25,7 @@ export default function IntroPage({ onGetStarted }) {
 
       <section className="intro__overview">
         <div className="intro__overview-head">
-          <p className="eyebrow">Platform Overview</p>
-          <h2>See what you can do before signing in</h2>
+          <h2>Platform Preview</h2>
         </div>
 
         <article className="intro-feature">
@@ -41,11 +40,14 @@ export default function IntroPage({ onGetStarted }) {
             </div>
           </div>
           <div className="intro-feature__content">
-            <h3>Interactive Shadow Map</h3>
+            <h3>Verified Shadowing Map</h3>
             <p>
-              Quickly scan clinic availability and focus on verified places near UW Tacoma. Colored dots show status at a glance.
+              See which dental clinics are actually open to student observers, confirmed through direct outreach and community reports. Status markers show at a glance which offices are currently accepting shadowing requests, so students stop guessing and start finding real opportunities.
             </p>
-            <p className="muted small">Goal: faster discovery with fewer dead-end outreach attempts.</p>
+            <p>
+              The built in reserve system spaces out requests so no single clinic gets flooded by dozens of students at once, protecting the relationships that keep shadowing accessible for everyone.
+            </p>
+            <p className="muted small">Goal: cut down on cold calling, surface clearer information about clinics open to observers, and make dental shadowing reachable for students without personal or family connections in the field.</p>
           </div>
         </article>
 
@@ -70,11 +72,11 @@ export default function IntroPage({ onGetStarted }) {
             </div>
           </div>
           <div className="intro-feature__content">
-            <h3>Dental Tracking Built In</h3>
+            <h3>Shadowing and Volunteering Tracking</h3>
             <p>
-              Log sessions, keep project notes, and monitor shadowing and volunteering totals separately in one place.
+              Log shadowing hours, volunteering, clinic notes, and outreach activity in one place, with separate totals and organized records ready for AADSAS.
             </p>
-            <p className="muted small">Goal: application-ready records without spreadsheets.</p>
+            <p className="muted small">Goal: application ready documentation without spreadsheets or scattered notes.</p>
           </div>
         </article>
       </section>

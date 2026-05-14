@@ -1445,14 +1445,14 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 }
 .hours-widget__value {
   display: block;
-  font-size: 2.15rem;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1;
-  letter-spacing: -0.02em;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-2);
+  line-height: 1.35;
+  letter-spacing: normal;
 }
 .hours-widget__value--secondary {
-  font-size: 1.95rem;
+  font-size: 0.95rem;
 }
 .hours-widget__label {
   display: block;

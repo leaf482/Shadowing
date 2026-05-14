@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_CENTER } from "../data/clinics.js";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
-import { formatApiErrorMessage } from "../lib/auth.js";
+import { authFetch, formatApiErrorMessage } from "../lib/auth.js";
 
 const MILES_OPTIONS = [5, 10, 15, 25];
 
@@ -26,7 +26,7 @@ function isLocked(clinic) {
 }
 
 function isAvailableForRequest(clinic) {
-  return clinic?.shadowingStatus === "available" && !isLocked(clinic);
+  return ["available", "mixed"].includes(clinic?.shadowingStatus) && !isLocked(clinic);
 }
 
 function formatLockExpires(lockExpiresAt) {
@@ -206,15 +206,13 @@ export default function ClinicsPage({
     setRequestError("");
     setLoadingRequestId(clinic.id);
     try {
-      const res = await fetch(`/api/clinics/${clinic.id}/request`, {
+      const res = await authFetch(`/api/clinics/${clinic.id}/request`, {
         method: "POST"
       });
-      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setRequestSuccess({ clinic: data.clinic, lockExpiresAt: data.lockExpiresAt });
         onRefreshClinics?.();
-      } else if (res.status === 409) {
-        setRequestError(await formatApiErrorMessage(res, "This clinic is temporarily unavailable."));
       } else {
         setRequestError(await formatApiErrorMessage(res, "Request failed."));
       }
@@ -394,11 +392,11 @@ export default function ClinicsPage({
             const locked = isLocked(clinic);
             const availableForRequest = isAvailableForRequest(clinic);
             const statusLabel =
-              clinic.shadowingStatus === "available" && locked
+              ["available", "mixed"].includes(clinic.shadowingStatus) && locked
                 ? `Temporarily unavailable until ${formatLockExpires(clinic.lockExpiresAt)}`
                 : statusOptions.find((o) => o.value === clinic.shadowingStatus)?.label ?? clinic.shadowingStatus;
             const statusClass =
-              clinic.shadowingStatus === "available" && locked ? "locked" : clinic.shadowingStatus;
+              ["available", "mixed"].includes(clinic.shadowingStatus) && locked ? "locked" : clinic.shadowingStatus;
             const specialtyLabel =
               PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)?.label ?? clinic.primarySpecialty;
 

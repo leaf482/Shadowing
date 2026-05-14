@@ -25,6 +25,7 @@ function clamp(value, min, max) {
 }
 
 const COOLDOWN_DAYS = Math.min(21, Math.max(14, parseInt(process.env.COOLDOWN_DAYS, 10) || 14));
+const MAX_ACTIVE_RESERVES = 3;
 const VERIFICATION_TTL_MS = clamp(envInt("VERIFICATION_TTL_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
 const VERIFICATION_RESEND_COOLDOWN_MS = clamp(envInt("VERIFICATION_RESEND_COOLDOWN_MS", 60 * 1000), 10 * 1000, 10 * 60 * 1000);
 const VERIFICATION_MAX_ATTEMPTS = clamp(envInt("VERIFICATION_MAX_ATTEMPTS", 5), 3, 10);
@@ -44,6 +45,12 @@ const LOGIN_RATE_WINDOW_MS = clamp(envInt("LOGIN_RATE_WINDOW_MS", 10 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS_PER_IP = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_IP", 10), 3, 100);
 const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_ACCOUNT", 10), 3, 100);
 const AUTH_LOGGING_ENABLED = process.env.AUTH_LOGGING_ENABLED !== "false";
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 const loginAttemptsByIp = new Map();
 const loginAttemptsByAccount = new Map();
@@ -264,11 +271,26 @@ const openDb = async () => {
   // Migration: clinic lock columns for shadowing request cooldown
   const clinicLockCols = [
     ["lock_expires_at", "text"],
-    ["locked_by_request_id", "text"]
+    ["locked_by_request_id", "text"],
+    ["created_by_user_id", "text"]
   ];
   for (const [col, def] of clinicLockCols) {
     try {
       await db.run(`alter table clinics add column ${col} ${def}`);
+    } catch (e) {
+      if (!e.message?.includes("duplicate column")) throw e;
+    }
+  }
+
+  // Migration: shadowing request ownership and expiry for per-user reserve limits
+  const shadowingRequestCols = [
+    ["user_id", "text"],
+    ["lock_expires_at", "text"],
+    ["reserve_units", "integer not null default 1"]
+  ];
+  for (const [col, def] of shadowingRequestCols) {
+    try {
+      await db.run(`alter table shadowing_requests add column ${col} ${def}`);
     } catch (e) {
       if (!e.message?.includes("duplicate column")) throw e;
     }
@@ -365,7 +387,16 @@ const verifyPassword = (password, stored) => {
   return timingSafeEqual(hashBuf, derived);
 };
 
-const mapClinicRow = (row) => {
+const isAdminUser = (userId) => {
+  return !!userId && ADMIN_EMAILS.has(String(userId).trim().toLowerCase());
+};
+
+const canManageClinic = (row, userId) => {
+  if (!userId) return false;
+  return isAdminUser(userId) || row.created_by_user_id === userId;
+};
+
+const mapClinicRow = (row, viewerUserId = null) => {
   let secondaryFilters = [];
   try {
     secondaryFilters = row.secondary_filters ? JSON.parse(row.secondary_filters) : [];
@@ -387,7 +418,8 @@ const mapClinicRow = (row) => {
     notes: row.notes,
     lastVerifiedAt: row.last_verified_at,
     lockExpiresAt: row.lock_expires_at ?? null,
-    lockedByRequestId: row.locked_by_request_id ?? null
+    lockedByRequestId: row.locked_by_request_id ?? null,
+    canManage: canManageClinic(row, viewerUserId)
   };
 };
 
@@ -471,9 +503,10 @@ async function getUserIdFromToken(req) {
   return row.user_id;
 }
 
-app.get("/api/clinics", async (_req, res) => {
+app.get("/api/clinics", async (req, res) => {
+  const viewerUserId = await getUserIdFromToken(req);
   const rows = await db.all("select * from clinics order by name");
-  res.json(rows.map(mapClinicRow));
+  res.json(rows.map((row) => mapClinicRow(row, viewerUserId)));
 });
 
 app.post("/api/clinics", async (req, res) => {
@@ -508,8 +541,8 @@ app.post("/api/clinics", async (req, res) => {
     ? JSON.stringify(secondaryFilters)
     : "[]";
   await db.run(
-    `insert into clinics (id, name, address, phone, email, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into clinics (id, name, address, phone, email, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at, created_by_user_id)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       name,
@@ -523,7 +556,8 @@ app.post("/api/clinics", async (req, res) => {
       primarySpecialty ?? "gp",
       secondaryFiltersJson,
       notes ?? "",
-      lastVerifiedAt
+      lastVerifiedAt,
+      requesterId
     ]
   );
 
@@ -557,6 +591,16 @@ app.put("/api/clinics/:id", async (req, res) => {
     return;
   }
 
+  const clinic = await db.get("select * from clinics where id = ?", [id]);
+  if (!clinic) {
+    res.status(404).json({ error: "Clinic not found." });
+    return;
+  }
+  if (!canManageClinic(clinic, requesterId)) {
+    res.status(403).json({ error: "You can only edit clinics you added." });
+    return;
+  }
+
   const lastVerifiedAt = new Date().toISOString().slice(0, 10);
   const secondaryFiltersJson = Array.isArray(secondaryFilters)
     ? JSON.stringify(secondaryFilters)
@@ -585,11 +629,38 @@ app.put("/api/clinics/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete("/api/clinics/:id", async (req, res) => {
+  const requesterId = await getUserIdFromToken(req);
+  if (!requesterId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { id } = req.params;
+  const clinic = await db.get("select * from clinics where id = ?", [id]);
+  if (!clinic) {
+    res.status(404).json({ error: "Clinic not found." });
+    return;
+  }
+  if (!canManageClinic(clinic, requesterId)) {
+    res.status(403).json({ error: "You can only delete clinics you added." });
+    return;
+  }
+
+  await db.run("delete from shadowing_requests where clinic_id = ?", [id]);
+  await db.run("delete from clinics where id = ?", [id]);
+  res.json({ ok: true });
+});
+
 // Delete all clinics (and their shadowing_requests). Use with care.
 app.delete("/api/clinics", async (req, res) => {
   const requesterId = await getUserIdFromToken(req);
   if (!requesterId) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (!isAdminUser(requesterId)) {
+    res.status(403).json({ error: "Admin access required." });
     return;
   }
   await db.run("delete from shadowing_requests");
@@ -600,6 +671,12 @@ app.delete("/api/clinics", async (req, res) => {
 // --- Shadowing request (first-come lock + cooldown) ---
 
 app.post("/api/clinics/:id/request", async (req, res) => {
+  const userId = await getUserIdFromToken(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   const { id: clinicId } = req.params;
   if (!clinicId) {
     res.status(400).json({ error: "Clinic ID required." });
@@ -612,7 +689,8 @@ app.post("/api/clinics/:id/request", async (req, res) => {
     return;
   }
 
-  if (clinic.shadowing_status !== "available") {
+  const reservableStatuses = new Set(["available", "mixed"]);
+  if (!reservableStatuses.has(clinic.shadowing_status)) {
     res.status(400).json({
       error: "This clinic is not available for shadowing requests."
     });
@@ -620,6 +698,20 @@ app.post("/api/clinics/:id/request", async (req, res) => {
   }
 
   const now = new Date().toISOString();
+  const activeReserveRow = await db.get(
+    "select count(*) as count from shadowing_requests where user_id = ? and lock_expires_at > ?",
+    [userId, now]
+  );
+  const activeReserveCount = Number(activeReserveRow?.count ?? 0);
+  if (activeReserveCount >= MAX_ACTIVE_RESERVES) {
+    res.status(429).json({
+      error: `You already have ${MAX_ACTIVE_RESERVES} active reserves. Please wait until one expires before reserving another clinic.`,
+      activeReserveCount,
+      maxActiveReserves: MAX_ACTIVE_RESERVES
+    });
+    return;
+  }
+
   const lockExpiresAt = clinic.lock_expires_at;
   if (lockExpiresAt && lockExpiresAt > now) {
     const untilDate = new Date(lockExpiresAt).toLocaleDateString(undefined, {
@@ -635,14 +727,14 @@ app.post("/api/clinics/:id/request", async (req, res) => {
   }
 
   const requestId = randomUUID();
-  await db.run(
-    "insert into shadowing_requests (id, clinic_id) values (?, ?)",
-    [requestId, clinicId]
-  );
-
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + COOLDOWN_DAYS);
   const expiresAtIso = expiresAt.toISOString();
+
+  await db.run(
+    "insert into shadowing_requests (id, clinic_id, user_id, lock_expires_at, reserve_units) values (?, ?, ?, ?, ?)",
+    [requestId, clinicId, userId, expiresAtIso, 1]
+  );
 
   await db.run(
     "update clinics set lock_expires_at = ?, locked_by_request_id = ? where id = ?",

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
 import { authFetch } from "../lib/auth.js";
 import { formatApiErrorMessage } from "../lib/auth.js";
+import ClinicForm from "./ClinicForm.jsx";
 
 function isLocked(clinic) {
   if (!clinic?.lockExpiresAt) return false;
@@ -25,6 +26,10 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
   const [savingQuickUpdate, setSavingQuickUpdate] = useState(false);
   const [quickUpdateError, setQuickUpdateError] = useState("");
   const [quickUpdateSuccess, setQuickUpdateSuccess] = useState("");
+  const [isEditingClinic, setIsEditingClinic] = useState(false);
+  const [manageError, setManageError] = useState("");
+  const [manageSuccess, setManageSuccess] = useState("");
+  const [deletingClinic, setDeletingClinic] = useState(false);
 
   useEffect(() => {
     authFetch("/api/projects")
@@ -55,6 +60,9 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
     setQuickNotes(clinic.notes || "");
     setQuickUpdateError("");
     setQuickUpdateSuccess("");
+    setIsEditingClinic(false);
+    setManageError("");
+    setManageSuccess("");
   }, [clinic]);
 
   /* ── Hours widget (shown in both states) ── */
@@ -107,30 +115,29 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
   /* ── Clinic detail ── */
   const locked = isLocked(clinic);
   const statusClass =
-    clinic.shadowingStatus === "available" && locked ? "locked" : clinic.shadowingStatus;
+    ["available", "mixed"].includes(clinic.shadowingStatus) && locked ? "locked" : clinic.shadowingStatus;
   const statusLabel =
-    clinic.shadowingStatus === "available" && locked
+    ["available", "mixed"].includes(clinic.shadowingStatus) && locked
       ? `Temporarily unavailable until ${formatLockExpires(clinic.lockExpiresAt)}`
       : statusLabels[clinic.shadowingStatus] ?? clinic.shadowingStatus;
 
   const specialtyLabel =
     PRIMARY_SPECIALTIES.find((s) => s.value === clinic.primarySpecialty)?.label
     ?? clinic.primarySpecialty;
-  const availableForRequest = clinic.shadowingStatus === "available" && !locked;
+  const availableForRequest = ["available", "mixed"].includes(clinic.shadowingStatus) && !locked;
+  const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
 
   const handleReserveSlot = async () => {
     setRequestError("");
     setRequestSuccess("");
     setLoadingRequest(true);
     try {
-      const res = await fetch(`/api/clinics/${clinic.id}/request`, {
+      const res = await authFetch(`/api/clinics/${clinic.id}/request`, {
         method: "POST"
       });
       if (res.ok) {
         setRequestSuccess("Reserved. This clinic is temporarily unavailable for about 2 weeks.");
         onRefreshClinics?.();
-      } else if (res.status === 409) {
-        setRequestError(await formatApiErrorMessage(res, "This clinic is temporarily unavailable."));
       } else {
         setRequestError(await formatApiErrorMessage(res, "Request failed."));
       }
@@ -180,6 +187,53 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
     }
   };
 
+  const handleManageClinicSubmit = async (payload) => {
+    if (!clinic) return;
+    setManageError("");
+    setManageSuccess("");
+    try {
+      const response = await authFetch(`/api/clinics/${clinic.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload.proposed)
+      });
+
+      if (response.ok) {
+        setManageSuccess("Clinic updated.");
+        setIsEditingClinic(false);
+        onRefreshClinics?.();
+      } else {
+        setManageError(await formatApiErrorMessage(response, "Could not update clinic."));
+      }
+    } catch {
+      setManageError("Network error. Please try again.");
+    }
+  };
+
+  const handleDeleteClinic = async () => {
+    if (!clinic) return;
+    if (!confirm(`Delete ${clinic.name}? This cannot be undone.`)) return;
+    setManageError("");
+    setManageSuccess("");
+    setDeletingClinic(true);
+    try {
+      const response = await authFetch(`/api/clinics/${clinic.id}`, {
+        method: "DELETE"
+      });
+      if (response.ok) {
+        onRefreshClinics?.();
+      } else {
+        setManageError(await formatApiErrorMessage(response, "Could not delete clinic."));
+      }
+    } catch {
+      setManageError("Network error. Please try again.");
+    } finally {
+      setDeletingClinic(false);
+    }
+  };
+
   return (
     <div className="info-panel">
       <div className="card">
@@ -219,7 +273,58 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
           </p>
         )}
 
-        {clinic.shadowingStatus === "pending" && (
+        {clinic.canManage && (
+          <div className="clinic-info__actions" style={{ marginTop: "0.65rem" }}>
+            <button
+              type="button"
+              className="button button--secondary button--small"
+              onClick={() => {
+                setIsEditingClinic((current) => !current);
+                setManageError("");
+                setManageSuccess("");
+              }}
+            >
+              {isEditingClinic ? "Close edit" : "Edit clinic"}
+            </button>
+            <button
+              type="button"
+              className="button button--secondary button--small"
+              disabled={deletingClinic}
+              onClick={handleDeleteClinic}
+            >
+              {deletingClinic ? "Deleting…" : "Delete clinic"}
+            </button>
+          </div>
+        )}
+        {manageSuccess && (
+          <p className="muted small" style={{ marginTop: "0.5rem", marginBottom: 0, color: "var(--success)" }}>
+            {manageSuccess}
+          </p>
+        )}
+        {manageError && (
+          <p className="muted small" style={{ marginTop: "0.5rem", marginBottom: 0, color: "var(--danger)" }}>
+            {manageError}
+          </p>
+        )}
+
+        {clinic.canManage && isEditingClinic && (
+          <div className="clinic-info__notes-block" style={{ marginTop: "0.8rem", paddingTop: "0.8rem" }}>
+            <p className="clinic-info__field-label" style={{ marginBottom: "0.45rem" }}>
+              Edit clinic information
+            </p>
+            <ClinicForm
+              clinics={[]}
+              statusOptions={statusOptions}
+              onSubmit={handleManageClinicSubmit}
+              centerFallback={null}
+              initialClinic={clinic}
+              submitLabel="Save changes"
+              onCancel={() => setIsEditingClinic(false)}
+            />
+          </div>
+        )}
+
+        {clinic.canManage && clinic.shadowingStatus === "pending" && (
           <div className="clinic-info__notes-block" style={{ marginTop: "0.8rem", paddingTop: "0.8rem" }}>
             <p className="clinic-info__field-label" style={{ marginBottom: "0.45rem" }}>
               Quick update (pending)
