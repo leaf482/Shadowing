@@ -1,19 +1,16 @@
 import compression from "compression";
 import express from "express";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { toAadsasRecords, toCsv } from "./export.js";
-import { writeClinicsSnapshotFile } from "./clinicsSnapshot.js";
+import { writeClinicsSnapshotRows } from "./clinicsSnapshot.js";
+import { createRepositories } from "./repositories/createRepositories.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
-// Resolved relative to this file's directory — works regardless of cwd
-const DB_PATH = process.env.SQLITE_PATH || join(__dirname, "shadowing.db");
 
 function envInt(name, fallback) {
   const raw = process.env[name];
@@ -146,267 +143,7 @@ app.use(
   })
 );
 
-const openDb = async () => {
-  const db = await open({
-    filename: DB_PATH,
-    driver: sqlite3.Database
-  });
-
-  await db.exec(`
-    create table if not exists clinics (
-      id text primary key,
-      name text not null,
-      address text not null,
-      phone text,
-      lat real not null,
-      lng real not null,
-      zip text,
-      shadowing_status text not null default 'mixed',
-      notes text,
-      last_verified_at text
-    );
-
-    create table if not exists shadowing_requests (
-      id text primary key,
-      clinic_id text not null,
-      created_at text default (datetime('now')),
-      foreign key (clinic_id) references clinics(id)
-    );
-
-    create table if not exists experiences (
-      id text primary key,
-      experience_type text not null,
-      organization_name text not null,
-      address text,
-      address2 text,
-      city text,
-      state_province text,
-      country text,
-      zip text,
-      supervisor_first_name text,
-      supervisor_last_name text,
-      supervisor_title text,
-      supervisor_phone text,
-      supervisor_email text,
-      hours real not null default 0,
-      date_start text,
-      date_end text,
-      notes text,
-      created_at text default (datetime('now'))
-    );
-
-    -- New schema: projects (clinic placements)
-    create table if not exists projects (
-      id text primary key,
-      name text not null,
-      clinic_id text,
-      experience_type text,
-      address text,
-      address2 text,
-      city text,
-      state_province text,
-      country text,
-      zip text,
-      supervisor_first_name text,
-      supervisor_last_name text,
-      supervisor_title text,
-      supervisor_phone text,
-      supervisor_email text,
-      status text,
-      description text,
-      notes text,
-      created_at text default (datetime('now')),
-      foreign key (clinic_id) references clinics(id)
-    );
-
-    create table if not exists users (
-      email text primary key,
-      password_hash text not null,
-      created_at text default (datetime('now'))
-    );
-
-    -- New schema: sessions (individual visit logs per project)
-    create table if not exists sessions (
-      id text primary key,
-      project_id text not null,
-      date text,
-      hours real not null default 0,
-      notes text,
-      created_at text default (datetime('now')),
-      foreign key (project_id) references projects(id)
-    );
-  `);
-
-  // Migration: add Figure 2 columns if missing
-  const newCols = [
-    ["avg_weekly_hours", "real"],
-    ["number_of_weeks", "real"],
-    ["current_experience", "integer default 0"],
-    ["status", "text"],
-    ["title", "text"],
-    ["type_compensated", "integer default 0"],
-    ["type_academic_credit", "integer default 0"],
-    ["type_volunteer", "integer default 0"],
-    ["description", "text"]
-  ];
-  for (const [col, def] of newCols) {
-    try {
-      await db.run(`alter table experiences add column ${col} ${def}`);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: experiences user_id
-  try {
-    await db.run("alter table experiences add column user_id text");
-  } catch (e) {
-    if (!e.message?.includes("duplicate column")) throw e;
-  }
-
-  // Migration: projects extra columns
-  const projectCols = [
-    ["user_id", "text"],
-    ["date_start", "text"],
-  ];
-  for (const [col, def] of projectCols) {
-    try {
-      await db.run(`alter table projects add column ${col} ${def}`);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: sessions extra columns (placeholder for future additions)
-  const sessionCols = [
-    // e.g. ["some_future_col", "text"]
-  ];
-  for (const [col, def] of sessionCols) {
-    try {
-      await db.run(`alter table sessions add column ${col} ${def}`);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: clinic lock columns for shadowing request cooldown
-  const clinicLockCols = [
-    ["lock_expires_at", "text"],
-    ["locked_by_request_id", "text"],
-    ["created_by_user_id", "text"]
-  ];
-  for (const [col, def] of clinicLockCols) {
-    try {
-      await db.run(`alter table clinics add column ${col} ${def}`);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: shadowing request ownership and expiry for per-user reserve limits
-  const shadowingRequestCols = [
-    ["user_id", "text"],
-    ["lock_expires_at", "text"],
-    ["reserve_units", "integer not null default 1"]
-  ];
-  for (const [col, def] of shadowingRequestCols) {
-    try {
-      await db.run(`alter table shadowing_requests add column ${col} ${def}`);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: primary specialty (required per clinic)
-  try {
-    await db.run("alter table clinics add column primary_specialty text default 'gp'");
-  } catch (e) {
-    if (!e.message?.includes("duplicate column")) throw e;
-  }
-
-  // Migration: secondary filters (JSON array, optional)
-  try {
-    await db.run("alter table clinics add column secondary_filters text default '[]'");
-  } catch (e) {
-    if (!e.message?.includes("duplicate column")) throw e;
-  }
-
-  // Migration: clinic email (optional)
-  try {
-    await db.run("alter table clinics add column email text");
-  } catch (e) {
-    if (!e.message?.includes("duplicate column")) throw e;
-  }
-
-  // Migration: auth_sessions table (server-issued tokens — NOT the project sessions table)
-  await db.run(`
-    create table if not exists auth_sessions (
-      token text primary key,
-      user_id text not null,
-      created_at text not null
-    )
-  `);
-
-  // Migration: email verification fields on users
-  for (const col of [
-    "alter table users add column is_verified integer not null default 0",
-    "alter table users add column verification_code text",
-    "alter table users add column verification_expires_at text",
-    "alter table users add column verification_sent_at text",
-    "alter table users add column verification_attempts integer not null default 0",
-    "alter table users add column verification_locked_until text",
-  ]) {
-    try {
-      await db.run(col);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  // Migration: password reset fields on users
-  for (const col of [
-    "alter table users add column password_reset_code text",
-    "alter table users add column password_reset_expires_at text",
-    "alter table users add column password_reset_sent_at text",
-    "alter table users add column password_reset_attempts integer not null default 0",
-    "alter table users add column password_reset_locked_until text",
-  ]) {
-    try {
-      await db.run(col);
-    } catch (e) {
-      if (!e.message?.includes("duplicate column")) throw e;
-    }
-  }
-
-  await db.run(`
-    create table if not exists admin_audit_logs (
-      id text primary key,
-      actor_user_id text not null,
-      action text not null,
-      target_type text,
-      target_id text,
-      details text,
-      created_at text default (datetime('now'))
-    )
-  `);
-
-  await db.run(`
-    create table if not exists clinic_quality_flags (
-      id text primary key,
-      clinic_id text not null,
-      flag_type text not null,
-      notes text,
-      status text not null default 'open',
-      created_by_user_id text,
-      resolved_by_user_id text,
-      created_at text default (datetime('now')),
-      resolved_at text,
-      foreign key (clinic_id) references clinics(id)
-    )
-  `);
-
-  return db;
-};
+const repos = await createRepositories();
 
 // --- Auth helpers ---
 
@@ -460,18 +197,15 @@ async function requireAdmin(req, res) {
 async function writeAuditLog(actorUserId, action, targetType = null, targetId = null, details = null) {
   if (!actorUserId) return;
   try {
-    await db.run(
-      `insert into admin_audit_logs (id, actor_user_id, action, target_type, target_id, details)
-       values (?, ?, ?, ?, ?, ?)`,
-      [
-        randomUUID(),
-        actorUserId,
-        action,
-        targetType,
-        targetId,
-        details == null ? null : JSON.stringify(details)
-      ]
-    );
+    await repos.auditLogs.insert({
+      id: randomUUID(),
+      actor_user_id: actorUserId,
+      action,
+      target_type: targetType,
+      target_id: targetId,
+      details: details == null ? null : JSON.stringify(details),
+      created_at: new Date().toISOString()
+    });
   } catch (error) {
     console.error("[audit]", error);
   }
@@ -506,13 +240,14 @@ const mapClinicRow = (row, viewerUserId = null) => {
 };
 
 
-const db = await openDb();
-
-const CLINICS_SNAPSHOT_PATH = join(__dirname, "generated", "clinics.json");
+const CLINICS_SNAPSHOT_PATH = process.env.AWS_EXECUTION_ENV
+  ? join("/tmp", "clinics.json")
+  : join(__dirname, "generated", "clinics.json");
 
 async function refreshClinicsSnapshot() {
   try {
-    await writeClinicsSnapshotFile(db, CLINICS_SNAPSHOT_PATH);
+    const rows = await repos.clinics.selectAllOrdered();
+    await writeClinicsSnapshotRows(rows, CLINICS_SNAPSHOT_PATH);
   } catch (error) {
     console.error("[clinics snapshot]", error);
   }
@@ -562,10 +297,7 @@ function clearSessionCookie(res) {
 
 async function issueSession(userId, res) {
   const token = randomBytes(32).toString("hex");
-  await db.run(
-    "insert into auth_sessions (token, user_id, created_at) values (?, ?, ?)",
-    [token, userId, new Date().toISOString()]
-  );
+  await repos.authSessions.insert(token, userId, new Date().toISOString());
   setSessionCookie(res, token);
   return token;
 }
@@ -573,24 +305,18 @@ async function issueSession(userId, res) {
 async function getUserIdFromToken(req) {
   const token = getSessionToken(req);
   if (!token) return null;
-  const row = await db.get(
-    "select user_id, created_at from auth_sessions where token = ?",
-    [token]
-  );
+  const row = await repos.authSessions.findByToken(token);
   if (!row) return null;
 
   const age = Date.now() - new Date(row.created_at).getTime();
   if (age > SESSION_TTL_MS) {
-    await db.run("delete from auth_sessions where token = ?", [token]);
+    await repos.authSessions.deleteByToken(token);
     return null;
   }
 
   // Sliding session: refresh active sessions at most once per threshold window.
   if (age > SESSION_REFRESH_THRESHOLD_MS && req.res) {
-    await db.run(
-      "update auth_sessions set created_at = ? where token = ?",
-      [new Date().toISOString(), token]
-    );
+    await repos.authSessions.updateCreatedAt(token, new Date().toISOString());
     setSessionCookie(req.res, token);
   }
 
@@ -610,7 +336,7 @@ app.get("/clinics.json", (req, res, next) => {
 });
 
 app.get("/api/clinics/locks", async (req, res) => {
-  const rows = await db.all("select id, lock_expires_at, locked_by_request_id from clinics");
+  const rows = await repos.clinics.selectLockColumns();
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Cache-Control", "public, max-age=15");
   } else {
@@ -632,7 +358,7 @@ app.get("/api/clinics/session-overlay", async (req, res) => {
     res.json({ clinics: [] });
     return;
   }
-  const rows = await db.all("select id, created_by_user_id from clinics");
+  const rows = await repos.clinics.selectIdAndCreatedBy();
   res.json({
     clinics: rows.map((row) => ({
       id: row.id,
@@ -644,7 +370,7 @@ app.get("/api/clinics/session-overlay", async (req, res) => {
 
 app.get("/api/clinics", async (req, res) => {
   const viewerUserId = await getUserIdFromToken(req);
-  const rows = await db.all("select * from clinics order by name");
+  const rows = await repos.clinics.selectAllOrdered();
   res.json(rows.map((row) => mapClinicRow(row, viewerUserId)));
 });
 
@@ -679,26 +405,24 @@ app.post("/api/clinics", async (req, res) => {
   const secondaryFiltersJson = Array.isArray(secondaryFilters)
     ? JSON.stringify(secondaryFilters)
     : "[]";
-  await db.run(
-    `insert into clinics (id, name, address, phone, email, lat, lng, zip, shadowing_status, primary_specialty, secondary_filters, notes, last_verified_at, created_by_user_id)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      name,
-      address,
-      phone ?? "",
-      email ?? "",
-      lat,
-      lng,
-      zip ?? "",
-      shadowingStatus ?? "mixed",
-      primarySpecialty ?? "gp",
-      secondaryFiltersJson,
-      notes ?? "",
-      lastVerifiedAt,
-      requesterId
-    ]
-  );
+  await repos.clinics.insert({
+    id,
+    name,
+    address,
+    phone: phone ?? "",
+    email: email ?? "",
+    lat,
+    lng,
+    zip: zip ?? "",
+    shadowing_status: shadowingStatus ?? "mixed",
+    primary_specialty: primarySpecialty ?? "gp",
+    secondary_filters: secondaryFiltersJson,
+    notes: notes ?? "",
+    last_verified_at: lastVerifiedAt,
+    created_by_user_id: requesterId,
+    lock_expires_at: null,
+    locked_by_request_id: null
+  });
 
   await writeAuditLog(requesterId, "clinic.create", "clinic", id, { name });
   void refreshClinicsSnapshot();
@@ -732,7 +456,7 @@ app.put("/api/clinics/:id", async (req, res) => {
     return;
   }
 
-  const clinic = await db.get("select * from clinics where id = ?", [id]);
+  const clinic = await repos.clinics.findById(id);
   if (!clinic) {
     res.status(404).json({ error: "Clinic not found." });
     return;
@@ -746,26 +470,21 @@ app.put("/api/clinics/:id", async (req, res) => {
   const secondaryFiltersJson = Array.isArray(secondaryFilters)
     ? JSON.stringify(secondaryFilters)
     : "[]";
-  await db.run(
-    `update clinics
-     set name = ?, address = ?, phone = ?, email = ?, lat = ?, lng = ?, zip = ?, shadowing_status = ?, primary_specialty = ?, secondary_filters = ?, notes = ?, last_verified_at = ?
-     where id = ?`,
-    [
-      name,
-      address,
-      phone ?? "",
-      email ?? "",
-      lat,
-      lng,
-      zip ?? "",
-      shadowingStatus ?? "mixed",
-      primarySpecialty ?? "gp",
-      secondaryFiltersJson,
-      notes ?? "",
-      lastVerifiedAt,
-      id
-    ]
-  );
+  await repos.clinics.updateFull({
+    ...clinic,
+    name,
+    address,
+    phone: phone ?? "",
+    email: email ?? "",
+    lat,
+    lng,
+    zip: zip ?? "",
+    shadowing_status: shadowingStatus ?? "mixed",
+    primary_specialty: primarySpecialty ?? "gp",
+    secondary_filters: secondaryFiltersJson,
+    notes: notes ?? "",
+    last_verified_at: lastVerifiedAt
+  });
 
   await writeAuditLog(requesterId, "clinic.update", "clinic", id, { name });
   void refreshClinicsSnapshot();
@@ -780,7 +499,7 @@ app.delete("/api/clinics/:id", async (req, res) => {
   }
 
   const { id } = req.params;
-  const clinic = await db.get("select * from clinics where id = ?", [id]);
+  const clinic = await repos.clinics.findById(id);
   if (!clinic) {
     res.status(404).json({ error: "Clinic not found." });
     return;
@@ -790,8 +509,7 @@ app.delete("/api/clinics/:id", async (req, res) => {
     return;
   }
 
-  await db.run("delete from shadowing_requests where clinic_id = ?", [id]);
-  await db.run("delete from clinics where id = ?", [id]);
+  await repos.clinics.deleteById(id);
   await writeAuditLog(requesterId, "clinic.delete", "clinic", id, { name: clinic.name });
   void refreshClinicsSnapshot();
   res.json({ ok: true });
@@ -808,8 +526,7 @@ app.delete("/api/clinics", async (req, res) => {
     res.status(403).json({ error: "Admin access required." });
     return;
   }
-  await db.run("delete from shadowing_requests");
-  const result = await db.run("delete from clinics");
+  const result = await repos.clinics.deleteAll();
   await writeAuditLog(requesterId, "clinic.delete_all", "clinic", null, { deleted: result.changes });
   void refreshClinicsSnapshot();
   res.json({ ok: true, deleted: result.changes });
@@ -830,7 +547,7 @@ app.post("/api/clinics/:id/request", async (req, res) => {
     return;
   }
 
-  const clinic = await db.get("select * from clinics where id = ?", [clinicId]);
+  const clinic = await repos.clinics.findById(clinicId);
   if (!clinic) {
     res.status(404).json({ error: "Clinic not found." });
     return;
@@ -845,11 +562,7 @@ app.post("/api/clinics/:id/request", async (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const activeReserveRow = await db.get(
-    "select count(*) as count from shadowing_requests where user_id = ? and lock_expires_at > ?",
-    [userId, now]
-  );
-  const activeReserveCount = Number(activeReserveRow?.count ?? 0);
+  const activeReserveCount = await repos.shadowingRequests.countActiveForUser(userId, now);
   if (activeReserveCount >= MAX_ACTIVE_RESERVES) {
     res.status(429).json({
       error: `You already have ${MAX_ACTIVE_RESERVES} active reserves. Please wait until one expires before reserving another clinic.`,
@@ -878,17 +591,18 @@ app.post("/api/clinics/:id/request", async (req, res) => {
   expiresAt.setDate(expiresAt.getDate() + COOLDOWN_DAYS);
   const expiresAtIso = expiresAt.toISOString();
 
-  await db.run(
-    "insert into shadowing_requests (id, clinic_id, user_id, lock_expires_at, reserve_units) values (?, ?, ?, ?, ?)",
-    [requestId, clinicId, userId, expiresAtIso, 1]
-  );
+  await repos.shadowingRequests.insert({
+    id: requestId,
+    clinic_id: clinicId,
+    user_id: userId,
+    lock_expires_at: expiresAtIso,
+    reserve_units: 1,
+    created_at: now
+  });
 
-  await db.run(
-    "update clinics set lock_expires_at = ?, locked_by_request_id = ? where id = ?",
-    [expiresAtIso, requestId, clinicId]
-  );
+  await repos.clinics.setLock(clinicId, expiresAtIso, requestId);
 
-  const updated = await db.get("select * from clinics where id = ?", [clinicId]);
+  const updated = await repos.clinics.findById(clinicId);
   res.status(201).json({
     requestId,
     lockExpiresAt: expiresAtIso,
@@ -934,9 +648,7 @@ app.get("/api/admin/audit-logs", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(
-    "select * from admin_audit_logs order by created_at desc limit 100"
-  );
+  const rows = await repos.auditLogs.listRecent100();
   res.json(rows.map(mapAuditLogRow));
 });
 
@@ -944,21 +656,7 @@ app.get("/api/admin/reserves", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(`
-    select
-      c.id as clinic_id,
-      c.name as clinic_name,
-      c.shadowing_status,
-      c.lock_expires_at,
-      c.locked_by_request_id,
-      r.user_id,
-      r.created_at,
-      r.reserve_units
-    from clinics c
-    left join shadowing_requests r on r.id = c.locked_by_request_id
-    where c.lock_expires_at is not null and c.lock_expires_at > ?
-    order by c.lock_expires_at asc
-  `, [new Date().toISOString()]);
+  const rows = await repos.clinics.selectActiveReservesJoin(new Date().toISOString());
 
   res.json(rows.map((row) => ({
     requestId: row.locked_by_request_id,
@@ -978,21 +676,15 @@ app.delete("/api/admin/reserves/:requestId", async (req, res) => {
   if (!adminId) return;
 
   const { requestId } = req.params;
-  const clinic = await db.get(
-    "select id, name from clinics where locked_by_request_id = ?",
-    [requestId]
-  );
+  const clinic = await repos.clinics.findIdNameByLockedRequest(requestId);
   if (!clinic) {
     sendError(req, res, 404, "Reserve not found.");
     return;
   }
 
   const now = new Date().toISOString();
-  await db.run("update shadowing_requests set lock_expires_at = ? where id = ?", [now, requestId]);
-  await db.run(
-    "update clinics set lock_expires_at = null, locked_by_request_id = null where locked_by_request_id = ?",
-    [requestId]
-  );
+  await repos.shadowingRequests.setLockExpired(requestId, now);
+  await repos.clinics.clearLockByRequestId(requestId);
   await writeAuditLog(adminId, "reserve.unreserve", "shadowing_request", requestId, {
     clinicId: clinic.id,
     clinicName: clinic.name,
@@ -1005,14 +697,7 @@ app.get("/api/admin/quality-flags", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(`
-    select f.*, c.name as clinic_name
-    from clinic_quality_flags f
-    left join clinics c on c.id = f.clinic_id
-    order by
-      case when f.status = 'open' then 0 else 1 end,
-      f.created_at desc
-  `);
+  const rows = await repos.qualityFlags.listWithClinicNames();
   res.json(rows.map(mapQualityFlagRow));
 });
 
@@ -1028,18 +713,20 @@ app.post("/api/admin/quality-flags", async (req, res) => {
     return;
   }
 
-  const clinic = await db.get("select id, name from clinics where id = ?", [targetClinicId]);
+  const clinic = await repos.qualityFlags.clinicIdName(targetClinicId);
   if (!clinic) {
     sendError(req, res, 404, "Clinic not found.");
     return;
   }
 
   const id = randomUUID();
-  await db.run(
-    `insert into clinic_quality_flags (id, clinic_id, flag_type, notes, created_by_user_id)
-     values (?, ?, ?, ?, ?)`,
-    [id, targetClinicId, targetFlagType, notes ?? "", adminId]
-  );
+  await repos.qualityFlags.insert({
+    id,
+    clinic_id: targetClinicId,
+    flag_type: targetFlagType,
+    notes: notes ?? "",
+    created_by_user_id: adminId
+  });
   await writeAuditLog(adminId, "quality_flag.create", "clinic_quality_flag", id, {
     clinicId: targetClinicId,
     clinicName: clinic.name,
@@ -1053,12 +740,7 @@ app.put("/api/admin/quality-flags/:id/resolve", async (req, res) => {
   if (!adminId) return;
 
   const { id } = req.params;
-  const result = await db.run(
-    `update clinic_quality_flags
-       set status = 'resolved', resolved_by_user_id = ?, resolved_at = ?
-     where id = ?`,
-    [adminId, new Date().toISOString(), id]
-  );
+  const result = await repos.qualityFlags.resolve(id, adminId, new Date().toISOString());
   if (!result.changes) {
     sendError(req, res, 404, "Flag not found.");
     return;
@@ -1072,7 +754,7 @@ app.delete("/api/admin/quality-flags/:id", async (req, res) => {
   if (!adminId) return;
 
   const { id } = req.params;
-  const result = await db.run("delete from clinic_quality_flags where id = ?", [id]);
+  const result = await repos.qualityFlags.deleteById(id);
   if (!result.changes) {
     sendError(req, res, 404, "Flag not found.");
     return;
@@ -1086,16 +768,8 @@ app.post("/api/admin/cleanup/expired-reserves", async (req, res) => {
   if (!adminId) return;
 
   const now = new Date().toISOString();
-  const clinicsResult = await db.run(
-    `update clinics
-       set lock_expires_at = null, locked_by_request_id = null
-     where lock_expires_at is not null and lock_expires_at <= ?`,
-    [now]
-  );
-  const requestsResult = await db.run(
-    "delete from shadowing_requests where lock_expires_at is not null and lock_expires_at <= ?",
-    [now]
-  );
+  const clinicsResult = await repos.shadowingRequests.unlockClinicsExpired(now);
+  const requestsResult = await repos.shadowingRequests.deleteExpired(now);
   const result = {
     unlockedClinics: clinicsResult.changes ?? 0,
     deletedRequests: requestsResult.changes ?? 0,
@@ -1108,13 +782,7 @@ app.get("/api/admin/cleanup/duplicates", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(`
-    select lower(trim(name)) as normalized_name, count(*) as count, group_concat(id, '|') as clinic_ids, group_concat(name, '|') as clinic_names
-    from clinics
-    group by lower(trim(name))
-    having count(*) > 1
-    order by count desc, normalized_name asc
-  `);
+  const rows = await repos.adminCleanup.duplicateClinicNames();
   res.json(rows.map((row) => ({
     normalizedName: row.normalized_name,
     count: row.count,
@@ -1127,12 +795,7 @@ app.get("/api/admin/cleanup/missing-contact", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(`
-    select id, name, phone, email, shadowing_status
-    from clinics
-    where coalesce(trim(phone), '') = '' and coalesce(trim(email), '') = ''
-    order by name asc
-  `);
+  const rows = await repos.adminCleanup.missingContactClinics();
   res.json(rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -1146,12 +809,7 @@ app.get("/api/admin/cleanup/stale-clinics", async (req, res) => {
   const adminId = await requireAdmin(req, res);
   if (!adminId) return;
 
-  const rows = await db.all(`
-    select id, name, last_verified_at, shadowing_status
-    from clinics
-    where last_verified_at is null or last_verified_at < date('now', '-180 days')
-    order by last_verified_at asc, name asc
-  `);
+  const rows = await repos.adminCleanup.staleClinics();
   res.json(rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -1200,32 +858,13 @@ app.get("/api/experiences", async (req, res) => {
     return;
   }
   const { clinic, supervisor, phone, email, type } = req.query;
-  let sql = "select * from experiences where user_id = ?";
-  const params = [userId];
-
-  if (clinic) {
-    sql += " and lower(organization_name) like lower(?)";
-    params.push(`%${clinic}%`);
-  }
-  if (supervisor) {
-    sql += " and (lower(supervisor_first_name) like lower(?) or lower(supervisor_last_name) like lower(?))";
-    params.push(`%${supervisor}%`, `%${supervisor}%`);
-  }
-  if (phone) {
-    sql += " and supervisor_phone like ?";
-    params.push(`%${phone}%`);
-  }
-  if (email) {
-    sql += " and lower(supervisor_email) like lower(?)";
-    params.push(`%${email}%`);
-  }
-  if (type) {
-    sql += " and experience_type = ?";
-    params.push(type);
-  }
-
-  sql += " order by date_start desc, created_at desc";
-  const rows = await db.all(sql, params);
+  const rows = await repos.experiences.listFiltered(userId, {
+    clinic,
+    supervisor,
+    phone,
+    email,
+    type
+  });
   res.json(rows.map(mapExperienceRow));
 });
 
@@ -1273,44 +912,38 @@ app.post("/api/experiences", async (req, res) => {
   }
 
   const id = randomUUID();
-  await db.run(
-    `insert into experiences (
-      id, user_id, experience_type, organization_name, address, address2, city, state_province, country, zip,
-      supervisor_first_name, supervisor_last_name, supervisor_title, supervisor_phone, supervisor_email,
-      hours, date_start, date_end, notes, description, avg_weekly_hours, number_of_weeks,
-      current_experience, status, title, type_compensated, type_academic_credit, type_volunteer
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      userId,
-      experienceType ?? "dental_shadowing_in_person",
-      organizationName,
-      address ?? "",
-      address2 ?? "",
-      city ?? "",
-      stateProvince ?? "",
-      country ?? "",
-      zip ?? "",
-      supervisorFirstName ?? "",
-      supervisorLastName ?? "",
-      supervisorTitle ?? "",
-      supervisorPhone ?? "",
-      supervisorEmail ?? "",
-      hoursNum,
-      dateStart ?? "",
-      dateEnd ?? "",
-      notes ?? "",
-      description ?? "",
-      avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
-      numberOfWeeks != null ? Number(numberOfWeeks) : null,
-      currentExperience ? 1 : 0,
-      status ?? "",
-      title ?? "",
-      typeCompensated ? 1 : 0,
-      typeAcademicCredit ? 1 : 0,
-      typeVolunteer ? 1 : 0,
-    ]
-  );
+  const created_at = new Date().toISOString();
+  await repos.experiences.insert({
+    id,
+    user_id: userId,
+    experience_type: experienceType ?? "dental_shadowing_in_person",
+    organization_name: organizationName,
+    address: address ?? "",
+    address2: address2 ?? "",
+    city: city ?? "",
+    state_province: stateProvince ?? "",
+    country: country ?? "",
+    zip: zip ?? "",
+    supervisor_first_name: supervisorFirstName ?? "",
+    supervisor_last_name: supervisorLastName ?? "",
+    supervisor_title: supervisorTitle ?? "",
+    supervisor_phone: supervisorPhone ?? "",
+    supervisor_email: supervisorEmail ?? "",
+    hours: hoursNum,
+    date_start: dateStart ?? "",
+    date_end: dateEnd ?? "",
+    notes: notes ?? "",
+    description: description ?? "",
+    avg_weekly_hours: avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
+    number_of_weeks: numberOfWeeks != null ? Number(numberOfWeeks) : null,
+    current_experience: currentExperience ? 1 : 0,
+    status: status ?? "",
+    title: title ?? "",
+    type_compensated: typeCompensated ? 1 : 0,
+    type_academic_credit: typeAcademicCredit ? 1 : 0,
+    type_volunteer: typeVolunteer ? 1 : 0,
+    created_at
+  });
 
   res.status(201).json({ id });
 });
@@ -1359,44 +992,36 @@ app.put("/api/experiences/:id", async (req, res) => {
     return;
   }
 
-  const result = await db.run(
-    `update experiences set
-      experience_type = ?, organization_name = ?, address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
-      supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?, supervisor_phone = ?, supervisor_email = ?,
-      hours = ?, date_start = ?, date_end = ?, notes = ?, description = ?, avg_weekly_hours = ?, number_of_weeks = ?,
-      current_experience = ?, status = ?, title = ?, type_compensated = ?, type_academic_credit = ?, type_volunteer = ?
-    where id = ? and user_id = ?`,
-    [
-      experienceType ?? "dental_shadowing_in_person",
-      organizationName,
-      address ?? "",
-      address2 ?? "",
-      city ?? "",
-      stateProvince ?? "",
-      country ?? "",
-      zip ?? "",
-      supervisorFirstName ?? "",
-      supervisorLastName ?? "",
-      supervisorTitle ?? "",
-      supervisorPhone ?? "",
-      supervisorEmail ?? "",
-      hoursNum,
-      dateStart ?? "",
-      dateEnd ?? "",
-      notes ?? "",
-      description ?? "",
-      avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
-      numberOfWeeks != null ? Number(numberOfWeeks) : null,
-      currentExperience ? 1 : 0,
-      status ?? "",
-      title ?? "",
-      typeCompensated ? 1 : 0,
-      typeAcademicCredit ? 1 : 0,
-      typeVolunteer ? 1 : 0,
-      id,
-      userId,
-    ]
-  );
+  const result = await repos.experiences.update({
+    id,
+    user_id: userId,
+    experience_type: experienceType ?? "dental_shadowing_in_person",
+    organization_name: organizationName,
+    address: address ?? "",
+    address2: address2 ?? "",
+    city: city ?? "",
+    state_province: stateProvince ?? "",
+    country: country ?? "",
+    zip: zip ?? "",
+    supervisor_first_name: supervisorFirstName ?? "",
+    supervisor_last_name: supervisorLastName ?? "",
+    supervisor_title: supervisorTitle ?? "",
+    supervisor_phone: supervisorPhone ?? "",
+    supervisor_email: supervisorEmail ?? "",
+    hours: hoursNum,
+    date_start: dateStart ?? "",
+    date_end: dateEnd ?? "",
+    notes: notes ?? "",
+    description: description ?? "",
+    avg_weekly_hours: avgWeeklyHours != null ? Number(avgWeeklyHours) : null,
+    number_of_weeks: numberOfWeeks != null ? Number(numberOfWeeks) : null,
+    current_experience: currentExperience ? 1 : 0,
+    status: status ?? "",
+    title: title ?? "",
+    type_compensated: typeCompensated ? 1 : 0,
+    type_academic_credit: typeAcademicCredit ? 1 : 0,
+    type_volunteer: typeVolunteer ? 1 : 0
+  });
 
   if (!result.changes) {
     res.status(404).json({ error: "Experience not found or not owned by this user." });
@@ -1417,10 +1042,7 @@ app.delete("/api/experiences/:id", async (req, res) => {
     res.status(400).json({ error: "ID required." });
     return;
   }
-  const result = await db.run(
-    "delete from experiences where id = ? and user_id = ?",
-    [id, userId]
-  );
+  const result = await repos.experiences.delete(id, userId);
   if (!result.changes) {
     res.status(404).json({ error: "Experience not found or not owned by this user." });
     return;
@@ -1468,16 +1090,10 @@ app.get("/api/projects", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const rows = await db.all(
-    "select * from projects where user_id = ? order by created_at desc",
-    [userId]
-  );
+  const rows = await repos.projects.listByUser(userId);
   const result = await Promise.all(
     rows.map(async (p) => {
-      const sessions = await db.all(
-        "select * from sessions where project_id = ? order by date asc, created_at asc",
-        [p.id]
-      );
+      const sessions = await repos.projects.sessionsByProject(p.id);
       return { ...mapProjectRow(p), sessions: sessions.map(mapSessionRow) };
     })
   );
@@ -1512,22 +1128,30 @@ app.post("/api/projects", async (req, res) => {
   }
 
   const id = randomUUID();
-  await db.run(
-    `insert into projects (
-      id, user_id, name, date_start, clinic_id, experience_type,
-      address, address2, city, state_province, country, zip,
-      supervisor_first_name, supervisor_last_name, supervisor_title,
-      supervisor_phone, supervisor_email,
-      status, description, notes
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id, userId, name, dateStart, clinicId ?? null, experienceType ?? null,
-      address ?? "", address2 ?? "", city ?? "", stateProvince ?? "", country ?? "", zip ?? "",
-      supervisorFirstName ?? "", supervisorLastName ?? "", supervisorTitle ?? "",
-      supervisorPhone ?? "", supervisorEmail ?? "",
-      status ?? "", description ?? "", notes ?? "",
-    ]
-  );
+  const created_at = new Date().toISOString();
+  await repos.projects.insert({
+    id,
+    user_id: userId,
+    name,
+    date_start: dateStart,
+    clinic_id: clinicId ?? null,
+    experience_type: experienceType ?? null,
+    address: address ?? "",
+    address2: address2 ?? "",
+    city: city ?? "",
+    state_province: stateProvince ?? "",
+    country: country ?? "",
+    zip: zip ?? "",
+    supervisor_first_name: supervisorFirstName ?? "",
+    supervisor_last_name: supervisorLastName ?? "",
+    supervisor_title: supervisorTitle ?? "",
+    supervisor_phone: supervisorPhone ?? "",
+    supervisor_email: supervisorEmail ?? "",
+    status: status ?? "",
+    description: description ?? "",
+    notes: notes ?? "",
+    created_at
+  });
 
   res.status(201).json({ id });
 });
@@ -1540,10 +1164,7 @@ app.put("/api/projects/:id", async (req, res) => {
   }
 
   const { id } = req.params;
-  const project = await db.get(
-    "select id from projects where id = ? and user_id = ?",
-    [id, userId]
-  );
+  const project = await repos.projects.findOwnedId(id, userId);
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
@@ -1569,37 +1190,28 @@ app.put("/api/projects/:id", async (req, res) => {
     return;
   }
 
-  await db.run(
-    `update projects
-       set name = ?, date_start = ?, clinic_id = ?, experience_type = ?,
-           address = ?, address2 = ?, city = ?, state_province = ?, country = ?, zip = ?,
-           supervisor_first_name = ?, supervisor_last_name = ?, supervisor_title = ?,
-           supervisor_phone = ?, supervisor_email = ?,
-           status = ?, description = ?, notes = ?
-     where id = ? and user_id = ?`,
-    [
-      name,
-      dateStart,
-      clinicId ?? null,
-      experienceType ?? null,
-      address ?? "",
-      address2 ?? "",
-      city ?? "",
-      stateProvince ?? "",
-      country ?? "",
-      zip ?? "",
-      supervisorFirstName ?? "",
-      supervisorLastName ?? "",
-      supervisorTitle ?? "",
-      supervisorPhone ?? "",
-      supervisorEmail ?? "",
-      status ?? "",
-      description ?? "",
-      notes ?? "",
-      id,
-      userId,
-    ]
-  );
+  const full = await repos.projects.findOwnedFull(id, userId);
+  await repos.projects.update({
+    ...full,
+    name,
+    date_start: dateStart,
+    clinic_id: clinicId ?? null,
+    experience_type: experienceType ?? null,
+    address: address ?? "",
+    address2: address2 ?? "",
+    city: city ?? "",
+    state_province: stateProvince ?? "",
+    country: country ?? "",
+    zip: zip ?? "",
+    supervisor_first_name: supervisorFirstName ?? "",
+    supervisor_last_name: supervisorLastName ?? "",
+    supervisor_title: supervisorTitle ?? "",
+    supervisor_phone: supervisorPhone ?? "",
+    supervisor_email: supervisorEmail ?? "",
+    status: status ?? "",
+    description: description ?? "",
+    notes: notes ?? ""
+  });
 
   res.json({ ok: true });
 });
@@ -1613,10 +1225,7 @@ app.post("/api/projects/:id/sessions", async (req, res) => {
 
   const { id: projectId } = req.params;
 
-  const project = await db.get(
-    "select id from projects where id = ? and user_id = ?",
-    [projectId, userId]
-  );
+  const project = await repos.projects.findOwnedId(projectId, userId);
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
@@ -1630,10 +1239,14 @@ app.post("/api/projects/:id/sessions", async (req, res) => {
   }
 
   const id = randomUUID();
-  await db.run(
-    "insert into sessions (id, project_id, date, hours, notes) values (?, ?, ?, ?, ?)",
-    [id, projectId, date ?? null, hoursNum, notes ?? ""]
-  );
+  await repos.placementSessions.insert({
+    id,
+    project_id: projectId,
+    date: date ?? null,
+    hours: hoursNum,
+    notes: notes ?? "",
+    created_at: new Date().toISOString()
+  });
 
   res.status(201).json({ id });
 });
@@ -1647,19 +1260,13 @@ app.get("/api/projects/:id", async (req, res) => {
 
   const { id } = req.params;
 
-  const project = await db.get(
-    "select * from projects where id = ? and user_id = ?",
-    [id, userId]
-  );
+  const project = await repos.projects.findOwnedFull(id, userId);
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
   }
 
-  const sessions = await db.all(
-    "select * from sessions where project_id = ? order by date asc, created_at asc",
-    [id]
-  );
+  const sessions = await repos.projects.sessionsByProject(id);
 
   res.json({ ...mapProjectRow(project), sessions: sessions.map(mapSessionRow) });
 });
@@ -1671,16 +1278,12 @@ app.delete("/api/projects/:id", async (req, res) => {
     return;
   }
   const { id } = req.params;
-  const project = await db.get(
-    "select id from projects where id = ? and user_id = ?",
-    [id, userId]
-  );
+  const project = await repos.projects.findOwnedId(id, userId);
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
   }
-  await db.run("delete from sessions where project_id = ?", [id]);
-  await db.run("delete from projects where id = ?", [id]);
+  await repos.projects.deleteCascade(id);
   res.json({ ok: true });
 });
 
@@ -1691,15 +1294,12 @@ app.delete("/api/projects/:id/sessions/:sessionId", async (req, res) => {
     return;
   }
   const { id: projectId, sessionId } = req.params;
-  const project = await db.get(
-    "select id from projects where id = ? and user_id = ?",
-    [projectId, userId]
-  );
+  const project = await repos.projects.findOwnedId(projectId, userId);
   if (!project) {
     res.status(404).json({ error: "Project not found." });
     return;
   }
-  await db.run("delete from sessions where id = ? and project_id = ?", [sessionId, projectId]);
+  await repos.placementSessions.delete(projectId, sessionId);
   res.json({ ok: true });
 });
 
@@ -1730,7 +1330,7 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = await db.get("select email from users where email = ?", [normalizedEmail]);
+  const existing = await repos.users.existsEmail(normalizedEmail);
   if (existing) {
     logAuthEventForRequest(req, "register_conflict", { email: maskEmail(normalizedEmail) });
     sendError(req, res, 409, "An account with this email already exists.");
@@ -1738,10 +1338,7 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   const passwordHash = hashPassword(password);
-  await db.run(
-    "insert into users (email, password_hash) values (?, ?)",
-    [normalizedEmail, passwordHash]
-  );
+  await repos.users.insert(normalizedEmail, passwordHash);
 
   logAuthEventForRequest(req, "register_success", { email: maskEmail(normalizedEmail) });
 
@@ -1773,10 +1370,7 @@ app.post("/api/auth/login", async (req, res) => {
     return;
   }
 
-  const user = await db.get(
-    "select email, password_hash, is_verified from users where email = ?",
-    [normalizedEmail]
-  );
+  const user = await repos.users.findForLogin(normalizedEmail);
 
   if (!user || !verifyPassword(password, user.password_hash)) {
     recordFailedAttempt(loginAttemptsByIp, ipKey, LOGIN_RATE_WINDOW_MS, now);
@@ -1788,7 +1382,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   loginAttemptsByAccount.delete(normalizedEmail);
 
-  if (!user.is_verified) {
+  if (!Number(user?.is_verified)) {
     await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
     logAuthEventForRequest(req, "login_unverified", { email: maskEmail(normalizedEmail) });
     sendError(req, res, 403, "email_not_verified", { email: normalizedEmail });
@@ -1803,7 +1397,7 @@ app.post("/api/auth/login", async (req, res) => {
 app.delete("/api/auth/logout", async (req, res) => {
   const token = getSessionToken(req);
   if (token) {
-    await db.run("delete from auth_sessions where token = ?", [token]);
+    await repos.authSessions.deleteByToken(token);
   }
   clearSessionCookie(res);
   logAuthEventForRequest(req, "logout", { hadSession: !!token });
@@ -1824,10 +1418,7 @@ app.get("/api/auth/session", async (req, res) => {
 
 async function sendVerificationCode(email, options = {}) {
   const { enforceResendCooldown = false } = options;
-  const existing = await db.get(
-    "select verification_sent_at from users where email = ?",
-    [email]
-  );
+  const existing = await repos.users.findVerificationSentAt(email);
 
   if (!existing) {
     return { sent: false, reason: "user_not_found" };
@@ -1845,16 +1436,7 @@ async function sendVerificationCode(email, options = {}) {
   const nowIso = new Date().toISOString();
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS).toISOString();
 
-  await db.run(
-    `update users
-     set verification_code = ?,
-         verification_expires_at = ?,
-         verification_sent_at = ?,
-         verification_attempts = 0,
-         verification_locked_until = null
-     where email = ?`,
-    [code, expiresAt, nowIso, email]
-  );
+  await repos.users.updateVerificationSend(email, code, expiresAt, nowIso);
 
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
@@ -1886,10 +1468,7 @@ async function sendVerificationCode(email, options = {}) {
 
 async function sendPasswordResetCode(email, options = {}) {
   const { enforceResendCooldown = false } = options;
-  const existing = await db.get(
-    "select password_reset_sent_at from users where email = ?",
-    [email]
-  );
+  const existing = await repos.users.findPasswordResetSentAt(email);
 
   if (!existing) {
     return { sent: false, reason: "user_not_found" };
@@ -1907,16 +1486,7 @@ async function sendPasswordResetCode(email, options = {}) {
   const nowIso = new Date().toISOString();
   const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
 
-  await db.run(
-    `update users
-     set password_reset_code = ?,
-         password_reset_expires_at = ?,
-         password_reset_sent_at = ?,
-         password_reset_attempts = 0,
-         password_reset_locked_until = null
-     where email = ?`,
-    [code, expiresAt, nowIso, email]
-  );
+  await repos.users.updatePasswordResetSend(email, code, expiresAt, nowIso);
 
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
@@ -1953,7 +1523,7 @@ app.post("/api/auth/send-verification", async (req, res) => {
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
-  const user = await db.get("select email from users where email = ?", [normalizedEmail]);
+  const user = await repos.users.existsEmail(normalizedEmail);
 
   // Always return a generic success envelope to avoid account enumeration.
   if (!user) {
@@ -1986,11 +1556,7 @@ app.post("/api/auth/verify", async (req, res) => {
     return;
   }
   const normalizedEmail = email.trim().toLowerCase();
-  const user = await db.get(
-    `select verification_code, verification_expires_at, verification_attempts, verification_locked_until
-     from users where email = ?`,
-    [normalizedEmail]
-  );
+  const user = await repos.users.findVerificationState(normalizedEmail);
 
   if (user?.verification_locked_until && new Date(user.verification_locked_until) > new Date()) {
     logAuthEventForRequest(req, "verification_locked", { email: maskEmail(normalizedEmail) });
@@ -2003,16 +1569,10 @@ app.post("/api/auth/verify", async (req, res) => {
       const nextAttempts = (user.verification_attempts ?? 0) + 1;
       if (nextAttempts >= VERIFICATION_MAX_ATTEMPTS) {
         const lockUntil = new Date(Date.now() + VERIFICATION_LOCK_MS).toISOString();
-        await db.run(
-          "update users set verification_attempts = ?, verification_locked_until = ? where email = ?",
-          [nextAttempts, lockUntil, normalizedEmail]
-        );
+        await repos.users.setVerificationAttemptsLock(normalizedEmail, nextAttempts, lockUntil);
         logAuthEventForRequest(req, "verification_locked_due_to_attempts", { email: maskEmail(normalizedEmail) });
       } else {
-        await db.run(
-          "update users set verification_attempts = ? where email = ?",
-          [nextAttempts, normalizedEmail]
-        );
+        await repos.users.bumpVerificationAttempts(normalizedEmail, nextAttempts);
       }
     }
     logAuthEventForRequest(req, "verification_failed", { email: maskEmail(normalizedEmail) });
@@ -2025,17 +1585,7 @@ app.post("/api/auth/verify", async (req, res) => {
     return;
   }
 
-  await db.run(
-    `update users
-     set is_verified = 1,
-         verification_code = null,
-         verification_expires_at = null,
-         verification_sent_at = null,
-         verification_attempts = 0,
-         verification_locked_until = null
-     where email = ?`,
-    [normalizedEmail]
-  );
+  await repos.users.verifySuccess(normalizedEmail);
 
   await issueSession(normalizedEmail, res);
   logAuthEventForRequest(req, "verification_success", { email: maskEmail(normalizedEmail) });
@@ -2050,13 +1600,10 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const user = await db.get(
-    "select email, is_verified from users where email = ?",
-    [normalizedEmail]
-  );
+  const user = await repos.users.findForLogin(normalizedEmail);
 
   // Generic success response to avoid account enumeration.
-  if (!user || !user.is_verified) {
+  if (!user || !Number(user.is_verified)) {
     logAuthEventForRequest(req, "password_reset_request_ignored", { email: maskEmail(normalizedEmail) });
     res.json({ ok: true });
     return;
@@ -2103,11 +1650,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const user = await db.get(
-    `select password_reset_code, password_reset_expires_at, password_reset_attempts, password_reset_locked_until
-     from users where email = ?`,
-    [normalizedEmail]
-  );
+  const user = await repos.users.findPasswordResetState(normalizedEmail);
 
   if (!user) {
     logAuthEventForRequest(req, "password_reset_failed_unknown_user", { email: maskEmail(normalizedEmail) });
@@ -2125,16 +1668,10 @@ app.post("/api/auth/reset-password", async (req, res) => {
     const nextAttempts = (user.password_reset_attempts ?? 0) + 1;
     if (nextAttempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
       const lockUntil = new Date(Date.now() + PASSWORD_RESET_LOCK_MS).toISOString();
-      await db.run(
-        "update users set password_reset_attempts = ?, password_reset_locked_until = ? where email = ?",
-        [nextAttempts, lockUntil, normalizedEmail]
-      );
+      await repos.users.setPasswordResetAttemptsLock(normalizedEmail, nextAttempts, lockUntil);
       logAuthEventForRequest(req, "password_reset_locked_due_to_attempts", { email: maskEmail(normalizedEmail) });
     } else {
-      await db.run(
-        "update users set password_reset_attempts = ? where email = ?",
-        [nextAttempts, normalizedEmail]
-      );
+      await repos.users.bumpPasswordResetAttempts(normalizedEmail, nextAttempts);
     }
     logAuthEventForRequest(req, "password_reset_failed_invalid_code", { email: maskEmail(normalizedEmail) });
     sendError(req, res, 400, "Invalid reset code.");
@@ -2148,19 +1685,9 @@ app.post("/api/auth/reset-password", async (req, res) => {
   }
 
   const passwordHash = hashPassword(password);
-  await db.run(
-    `update users
-     set password_hash = ?,
-         password_reset_code = null,
-         password_reset_expires_at = null,
-         password_reset_sent_at = null,
-         password_reset_attempts = 0,
-         password_reset_locked_until = null
-     where email = ?`,
-    [passwordHash, normalizedEmail]
-  );
+  await repos.users.updatePasswordClearReset(normalizedEmail, passwordHash);
 
-  await db.run("delete from auth_sessions where user_id = ?", [normalizedEmail]);
+  await repos.authSessions.deleteAllForUser(normalizedEmail);
 
   logAuthEventForRequest(req, "password_reset_success", { email: maskEmail(normalizedEmail) });
   res.json({ ok: true });
@@ -2175,16 +1702,10 @@ app.get("/api/export/aadsas", async (req, res) => {
     return;
   }
 
-  const rows = await db.all(
-    "select * from projects where user_id = ? order by created_at desc",
-    [userId]
-  );
+  const rows = await repos.projects.listByUser(userId);
   const projects = await Promise.all(
     rows.map(async (p) => {
-      const sessions = await db.all(
-        "select * from sessions where project_id = ? order by date asc, created_at asc",
-        [p.id]
-      );
+      const sessions = await repos.projects.sessionsByProject(p.id);
       return { ...mapProjectRow(p), sessions: sessions.map(mapSessionRow) };
     })
   );
@@ -2206,7 +1727,11 @@ app.get("*", (_req, res) => {
   res.sendFile(join(__dirname, "../dist/index.html"));
 });
 
+export default app;
+
 // Bind loopback only — Caddy proxies from :443; avoids exposing the API on :3000 publicly.
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(`Server listening on 127.0.0.1:${PORT}`);
-});
+if (!process.env.AWS_EXECUTION_ENV) {
+  app.listen(PORT, "127.0.0.1", () => {
+    console.log(`Server listening on 127.0.0.1:${PORT}`);
+  });
+}

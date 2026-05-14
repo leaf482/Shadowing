@@ -15,9 +15,12 @@
     "dev:all": "npm run dev:seed && npm run dev:full",
     "build": "node scripts/export-clinics-static.mjs && vite build",
     "preview": "vite preview",
-    "test:smoke:auth": "node --test server/auth.smoke.test.mjs"
+    "test:smoke:auth": "node --test server/auth.smoke.test.mjs",
+    "migrate:dynamo": "node scripts/migrate-sqlite-to-dynamo.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1046.0",
+    "@aws-sdk/lib-dynamodb": "^3.1046.0",
     "compression": "^1.8.1",
     "concurrently": "^8.2.2",
     "express": "^4.19.2",
@@ -25,6 +28,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
+    "serverless-http": "^4.0.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   },
