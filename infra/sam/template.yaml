@@ -5,7 +5,7 @@ Description: Shadow Network API — HTTP API + Lambda + DynamoDB (pay-per-reques
 Globals:
   Function:
     Timeout: 29
-    MemorySize: 512
+    MemorySize: !Ref LambdaMemoryMb
     Runtime: nodejs24.x
     Architectures:
       - arm64
@@ -18,7 +18,17 @@ Parameters:
     Type: String
     Default: ""
     Description: Comma-separated admin emails for ADMIN_EMAILS (optional).
-
+  LambdaMemoryMb:
+    Type: Number
+    Default: 256
+    Description: Lambda memory (MB); lower = cheaper per ms — raise if cold starts OOM.
+    MinValue: 128
+    MaxValue: 3008
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+    Description: CloudWatch log retention for Lambda (avoid infinite growth charges).
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 180, 365]
 Resources:
   ClinicsTable:
     Type: AWS::DynamoDB::Table
@@ -208,6 +218,13 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /{proxy+}
             Method: ANY
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: ApiFunction
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: !Ref LogRetentionDays
 
   HttpApi:
     Type: AWS::Serverless::HttpApi

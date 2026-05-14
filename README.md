@@ -17,8 +17,10 @@ directory, a shadowing tracker, and AADSAS-friendly export tooling.
 
 - React + Vite
 - React Leaflet (OpenStreetMap tiles)
-- SQLite + Express (local API)
+- SQLite or DynamoDB + Express API (see `.env.example`)
 - Plain CSS
+
+**AWS / spend:** see [docs/AWS_COSTS.md](docs/AWS_COSTS.md) (Lambda + Dynamo on-demand, optional S3 + CloudFront).
 
 ## Getting Started
 

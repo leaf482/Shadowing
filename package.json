@@ -18,10 +18,12 @@
     "test:smoke:auth": "node --test server/auth.smoke.test.mjs",
     "migrate:dynamo": "node scripts/migrate-sqlite-to-dynamo.mjs",
     "migrate:dynamo:from-stack": "bash scripts/migrate-dynamo-from-stack.sh",
-    "cleanup:artifacts": "node scripts/cleanup-artifacts.mjs"
+    "cleanup:artifacts": "node scripts/cleanup-artifacts.mjs",
+    "deploy:static": "node scripts/sync-static-cdn.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1046.0",
+    "@aws-sdk/client-s3": "^3.1046.0",
     "@aws-sdk/lib-dynamodb": "^3.1046.0",
     "compression": "^1.8.1",
     "concurrently": "^8.2.2",
