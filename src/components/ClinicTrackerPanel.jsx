@@ -58,6 +58,9 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
     if (!clinic) return;
     setQuickStatus(clinic.shadowingStatus || "pending");
     setQuickNotes(clinic.notes || "");
+    setRequestError("");
+    setRequestSuccess("");
+    setLoadingRequest(false);
     setQuickUpdateError("");
     setQuickUpdateSuccess("");
     setIsEditingClinic(false);

@@ -94,7 +94,7 @@ export default function MapPanel({ clinics, selectedClinicId, onSelectClinic }) 
       <div className="map__header">
         <div>
           <p className="eyebrow">Map view</p>
-          <h2>Clinics around UW Tacoma</h2>
+          <h2>Clinics around Pierce County</h2>
         </div>
         <div className="map__legend">
           <span className="legend-item">

@@ -183,6 +183,26 @@ a { color: var(--accent); }
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.app-footer {
+  margin: 2rem auto 0;
+  padding: 1rem 0 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  border-top: 1px solid var(--border);
+}
+.app-footer p {
+  margin: 0;
+}
+.app-footer p + p {
+  margin-top: 0.2rem;
+}
+.app-footer a {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .map-mock {
   position: relative;
