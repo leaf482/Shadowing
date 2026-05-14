@@ -1,5 +1,6 @@
 import compression from "compression";
 import express from "express";
+import helmet from "helmet";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -42,7 +43,11 @@ const SESSION_REFRESH_THRESHOLD_MS = clamp(
   5 * 60 * 1000,
   SESSION_TTL_MS
 );
-const SESSION_COOKIE_NAME = "shadowing_session";
+/** Production uses __Host- prefix (requires Secure + Path=/, no Domain). Dev stays plain name over HTTP. */
+const SESSION_COOKIE_NAME =
+  process.env.NODE_ENV === "production"
+    ? "__Host-shadowing_session"
+    : "shadowing_session";
 const LOGIN_RATE_WINDOW_MS = clamp(envInt("LOGIN_RATE_WINDOW_MS", 10 * 60 * 1000), 60 * 1000, 60 * 60 * 1000);
 const LOGIN_MAX_ATTEMPTS_PER_IP = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_IP", 10), 3, 100);
 const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = clamp(envInt("LOGIN_MAX_ATTEMPTS_PER_ACCOUNT", 10), 3, 100);
@@ -114,7 +119,18 @@ function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
 }
 
 const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", 1);
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    hsts:
+      process.env.ENABLE_HSTS === "true"
+        ? { maxAge: 31_536_000, includeSubDomains: true }
+        : false
+  })
+);
 if (process.env.NODE_ENV === "production") {
   app.use(compression());
 }
@@ -146,7 +162,7 @@ if (process.env.AWS_EXECUTION_ENV && API_GATEWAY_STAGE && API_GATEWAY_STAGE !== 
   });
 }
 
-app.use(express.json());
+app.use(express.json({ limit: "512kb" }));
 app.use(
   express.static(join(__dirname, "../dist"), {
     etag: true,
@@ -297,7 +313,13 @@ function parseCookies(req) {
 
 function getSessionToken(req) {
   const cookies = parseCookies(req);
-  return cookies[SESSION_COOKIE_NAME] || null;
+  const primary = cookies[SESSION_COOKIE_NAME];
+  if (primary) return primary;
+  // One release: accept legacy cookie name, then rotate to __Host- on refresh/login.
+  if (process.env.NODE_ENV === "production" && cookies.shadowing_session) {
+    return cookies.shadowing_session;
+  }
+  return null;
 }
 
 function setSessionCookie(res, token) {
@@ -307,6 +329,12 @@ function setSessionCookie(res, token) {
     "Set-Cookie",
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secureFlag}`
   );
+  if (process.env.NODE_ENV === "production" && SESSION_COOKIE_NAME !== "shadowing_session") {
+    res.appendHeader(
+      "Set-Cookie",
+      `shadowing_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`
+    );
+  }
 }
 
 function clearSessionCookie(res) {
@@ -315,6 +343,12 @@ function clearSessionCookie(res) {
     "Set-Cookie",
     `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`
   );
+  if (process.env.NODE_ENV === "production" && SESSION_COOKIE_NAME !== "shadowing_session") {
+    res.appendHeader(
+      "Set-Cookie",
+      `shadowing_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`
+    );
+  }
 }
 
 async function issueSession(userId, res) {
