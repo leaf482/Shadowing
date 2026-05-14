@@ -140,7 +140,6 @@ Resources:
 
   SiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
-    DependsOn: CloudFrontDistribution
     Properties:
       Bucket: !Ref SiteBucket
       PolicyDocument:
