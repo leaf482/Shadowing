@@ -22,6 +22,14 @@ The SAM API stack and optional static CDN are tuned for **pay-per-use**: no RDS,
 
 If you still run **EC2 + Caddy** for production, that instance has an **always-on** cost. To align with “no always-on servers”, **stop or terminate EC2** once you’re happy serving from **CloudFront + Lambda**, or only start EC2 when developing.
 
+## Production cutover (this project)
+
+- **App (CloudFront + S3 + Lambda API):** open **`https://d2z5wraie5zbrx.cloudfront.net`** (hash routes: `#dashboard`, `#login`, etc.).
+- **S3 bucket for uploads:** `shadowing-static-dev-sitebucket-xnygmxwbe67z` — set `STATIC_BUCKET` to this when running `npm run deploy:static`.
+- **EC2:** the previous app VM (`i-07c5882bf5836923d`) was **stopped** to avoid hourly compute charges. Start it again from the AWS console only when you need SSH/Caddy or legacy paths.
+- **Elastic IP:** if this instance had an EIP attached while stopped, AWS can still bill — **release or reassociate** the EIP if you see unexpected charges.
+- **Custom domain:** point DNS (CNAME) at the CloudFront domain **`d2z5wraie5zbrx.cloudfront.net`** (or attach a certificate + alternate domain on the distribution later).
+
 ## Optional static CDN (recommended for near-zero idle)
 
 1. Deploy API stack first (`infra/sam/template.yaml`).
@@ -35,12 +43,12 @@ If you still run **EC2 + Caddy** for production, that instance has an **always-o
    ```
 
 3. Note **Outputs**: `StaticBucketName`, `CloudFrontURL`.
-4. Build and upload:
+4. Build and upload (`npm ci` on the server if `@aws-sdk/client-s3` was just added):
 
    ```bash
+   npm ci
    npm run build
-   set STATIC_BUCKET=your-bucket-name
-   npm run deploy:static
+   STATIC_BUCKET=your-bucket-name AWS_REGION=us-west-2 npm run deploy:static
    ```
 
 5. Open **`CloudFrontURL`** in the browser (hash routes; SPA fallback is configured).
