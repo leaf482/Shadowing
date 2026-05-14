@@ -1,0 +1,61 @@
+{
+  "Comment": "Apex + www ALIAS CloudFront; SES MX/SPF; Resend DKIM (split TXT)",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "shadowingnetwork.com.",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "DNSName": "d2z5wraie5zbrx.cloudfront.net.",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "www.shadowingnetwork.com.",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "DNSName": "d2z5wraie5zbrx.cloudfront.net.",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "send.shadowingnetwork.com.",
+        "Type": "MX",
+        "TTL": 3600,
+        "ResourceRecords": [{ "Value": "10 feedback-smtp.us-east-1.amazonses.com." }]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "send.shadowingnetwork.com.",
+        "Type": "TXT",
+        "TTL": 3600,
+        "ResourceRecords": [{ "Value": "\"v=spf1 include:amazonses.com ~all\"" }]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "resend._domainkey.shadowingnetwork.com.",
+        "Type": "TXT",
+        "TTL": 3600,
+        "ResourceRecords": [
+          {
+            "Value": "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCm2ou8xFqEO+d/wsMD8LXpfXKrvGH7cba7qRDE7LNfWCTofdneqgv0u97DpwlIRqHvITBk63nDW7jdye/8KkMhRhbvd3k0fpPbzzTlEZsizWuPYWQ2Y3iPjNbCohZug5hdopbzJD2GT1U9EwXg36NueIeQq4dv0VXihg5He\""
+          },
+          { "Value": "\"4vX7QIDAQAB\"" }
+        ]
+      }
+    }
+  ]
+}
