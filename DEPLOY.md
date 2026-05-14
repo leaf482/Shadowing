@@ -13,7 +13,7 @@
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
-node -v   # should print v20.x.x
+node -v   # should print v20.x.x (GitHub Actions also tests Node 22.x)
 ```
 
 ---
@@ -129,6 +129,19 @@ Notes:
 - Session cookies are `HttpOnly`, `SameSite=Lax`, and expire in 7 days.
 - If `RESEND_API_KEY` is not set, verification codes are still generated server-side but email delivery is skipped.
 - Each request is assigned an `X-Request-Id` (or reuses proxy-provided one) to correlate auth logs across systems.
+- With `NODE_ENV=production`, the app sends **Content-Security-Policy** tuned for this SPA (maps tiles + Nominatim). Set `CSP_REPORT_ONLY=true` to log violations without enforcing, or `CSP_DISABLED=true` to turn CSP off.
+
+---
+
+## Operations: where the API runs
+
+- **VM + Caddy**: Node should bind loopback (see `server/index.js`); use **PM2 + `npm start`** so `instrument.mjs` runs (optional Sentry on the server).
+- **AWS Lambda**: Deploy `infra/sam/template.yaml` — runtime **Node.js 24.x**, handler `lambda-handler.mjs` (loads `instrument.mjs`).
+- **Static CDN**: `npm run deploy:static` uploads `dist/`; CSP from Express/Lambda does **not** apply to HTML served only from S3 unless you add equivalent headers in CloudFront.
+
+**Ubuntu note:** switching from distro Node 18 to NodeSource 20+ may **remove many `node-*` apt packages**. Reinstall anything you still need (`npm install -g …` or apt).
+
+**CI:** Pushes and PRs run GitHub Actions (`npm audit`, production build, auth smoke tests).
 
 ---
 
@@ -136,7 +149,7 @@ Notes:
 
 ```bash
 cd /home/ubuntu/shadowing
-pm2 start server/index.js --name shadowing --env production
+pm2 start npm --name shadowing -- start
 pm2 save               # persist across reboots
 pm2 startup            # follow the printed command to enable on boot
 ```

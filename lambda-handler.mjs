@@ -1,3 +1,4 @@
+import "./instrument.mjs";
 import serverless from "serverless-http";
 
 let cached;

@@ -1,6 +1,7 @@
 import compression from "compression";
 import express from "express";
 import helmet from "helmet";
+import * as Sentry from "@sentry/node";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -121,14 +122,41 @@ function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+
+const productionCspEnabled =
+  process.env.NODE_ENV === "production" && process.env.CSP_DISABLED !== "true";
+
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: productionCspEnabled
+      ? {
+          useDefaults: false,
+          reportOnly: process.env.CSP_REPORT_ONLY === "true",
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: [
+              "'self'",
+              "data:",
+              "blob:",
+              "https://*.tile.openstreetmap.org",
+              "https://tile.openstreetmap.org",
+            ],
+            connectSrc: ["'self'", "https://nominatim.openstreetmap.org"],
+            fontSrc: ["'self'", "data:"],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+            frameAncestors: ["'none'"],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false,
     hsts:
       process.env.ENABLE_HSTS === "true"
         ? { maxAge: 31_536_000, includeSubDomains: true }
-        : false
+        : false,
   })
 );
 if (process.env.NODE_ENV === "production") {
@@ -1783,6 +1811,10 @@ app.get("/api/export/aadsas", async (req, res) => {
 app.get("*", (_req, res) => {
   res.sendFile(join(__dirname, "../dist/index.html"));
 });
+
+if (process.env.SENTRY_DSN?.trim()) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 export default app;
 
