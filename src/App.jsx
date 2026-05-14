@@ -11,6 +11,7 @@ import TrackerPage from "./components/TrackerPage.jsx";
 import IntroPage from "./components/IntroPage.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import AdminPage from "./components/AdminPage.jsx";
+import WelcomeGate from "./components/WelcomeGate.jsx";
 
 const MapPanel = lazy(() => import("./components/MapPanel.jsx"));
 
@@ -376,6 +377,7 @@ export default function App() {
                       clinics={clinics}
                       selectedClinicId={selectedClinicId}
                       onSelectClinic={handleSelectClinic}
+                      userEmail={getStoredEmail()}
                     />
                   </Suspense>
                 </section>
@@ -398,6 +400,10 @@ export default function App() {
           </p>
         </footer>
       </div>
+      <WelcomeGate
+        userEmail={getStoredEmail()}
+        forcePreview={authReady && activePage === "welcome-preview"}
+      />
     </div>
   );
 }

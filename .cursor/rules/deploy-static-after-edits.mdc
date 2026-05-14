@@ -1,0 +1,29 @@
+---
+description: After implementing requested Shadowing code changes, build and deploy static assets to S3 + CloudFront unless user opts out.
+alwaysApply: true
+---
+
+# Deploy static site after edits
+
+When the user asks you to change/fix/implement something in this repo (especially under `src/`), treat **delivery as complete only after** a successful production static deploy, unless they explicitly say **not** to deploy (e.g. “코드만”, “배포는 빼고”).
+
+## Steps
+
+1. **`npm run build`** from repo root (`D:\Github\Shadowing` or workspace root).
+
+2. **Upload `dist/` + generated clinics JSON + sync script** to EC2 host **`friend`** (Ubuntu has IAM role credentials when Windows does not):
+   - Remote dir: `/tmp/shadowing-repo` (recreate clean each time).
+   - Copy: `dist/` → `/tmp/shadowing-repo/dist/`, `scripts/sync-static-cdn.mjs` → `/tmp/shadowing-repo/scripts/`, `server/generated/clinics.json` → `/tmp/shadowing-repo/server/generated/`.
+   - Copy `scripts/cdn-deploy-package.stub.json` to EC2 as `/tmp/shadowing-repo/package.json`.
+
+3. **On EC2**: `cd /tmp/shadowing-repo && npm install --omit=dev && STATIC_BUCKET=shadowing-static-dev-sitebucket-xnygmxwbe67z AWS_REGION=us-west-2 node scripts/sync-static-cdn.mjs`
+
+4. **CloudFront invalidation**:  
+   `aws cloudfront create-invalidation --distribution-id E2XKSS6CLI091Q --paths '/*'`  
+   (run via SSH on **`friend`** with same credentials).
+
+5. **Summarize** for the user: bucket id, invalidation id, and note propagation (~minutes).
+
+If `npm run deploy:static` works locally with AWS credentials, that plus CLI invalidation is acceptable instead of EC2.
+
+Do **not** deploy when edits are backend-only and don’t require a new SPA bundle—unless the user still asks for a release cut.
