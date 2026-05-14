@@ -80,6 +80,14 @@ export default function IntroPage({ onGetStarted }) {
           </div>
         </article>
       </section>
+
+      <footer className="intro__footer">
+        <p>Student-run directory. Data is publicly sourced and community maintained. Clinics may request removal at any time.</p>
+        <p>
+          Questions? Contact{" "}
+          <a href="mailto:shadowingnetwork2026@gmail.com">shadowingnetwork2026@gmail.com</a>
+        </p>
+      </footer>
     </div>
   );
 }

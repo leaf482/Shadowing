@@ -49,7 +49,16 @@ const NAV_ITEMS = [
   },
 ];
 
-export default function SideNav({ activePage, onNavigate, onLogout, userEmail, onBrandClick }) {
+export default function SideNav({
+  activePage,
+  onNavigate,
+  onLogout,
+  userEmail,
+  onBrandClick,
+  isAdmin = false,
+  adminMode = false,
+  onAdminModeChange
+}) {
   return (
     <aside className="nav">
       <button
@@ -95,14 +104,31 @@ export default function SideNav({ activePage, onNavigate, onLogout, userEmail, o
           </p>
         </div>
 
-        {onLogout && (
-          <button type="button" className="nav__logout" onClick={onLogout}>
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style={{ opacity: 0.7 }}>
-              <path d="M6 2H3a1 1 0 00-1 1v9a1 1 0 001 1h3M10 10l3-3-3-3M13 7H5"/>
-            </svg>
-            Sign out
-          </button>
-        )}
+        <div className="nav__bottom">
+          {isAdmin && (
+            <div className="nav__admin-toggle" role="group" aria-label="Admin mode">
+              <span className="nav__admin-label">User</span>
+              <button
+                type="button"
+                className={adminMode ? "nav__toggle is-on" : "nav__toggle"}
+                aria-pressed={adminMode}
+                onClick={() => onAdminModeChange?.(!adminMode)}
+              >
+                <span />
+              </button>
+              <span className="nav__admin-label">Admin</span>
+            </div>
+          )}
+
+          {onLogout && (
+            <button type="button" className="nav__logout" onClick={onLogout}>
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" style={{ opacity: 0.7 }}>
+                <path d="M6 2H3a1 1 0 00-1 1v9a1 1 0 001 1h3M10 10l3-3-3-3M13 7H5"/>
+              </svg>
+              Sign out
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

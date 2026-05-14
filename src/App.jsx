@@ -25,6 +25,7 @@ const CENTER_FALLBACK = {
 };
 
 const MAIN_PAGES = ["dashboard", "tracker", "clinics", "guidelines"];
+const ADMIN_MODE_KEY = "shadowing_admin_mode";
 
 function parseHash() {
   const raw = window.location.hash.replace("#", "").toLowerCase();
@@ -41,12 +42,24 @@ export default function App() {
   const [activePage, setActivePage] = useState(parseHash());
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminMode, setAdminMode] = useState(false);
 
   useEffect(() => {
     let active = true;
-    restoreSessionFromServer().then((hasSession) => {
+    restoreSessionFromServer().then((session) => {
       if (!active) return;
-      setAuthenticated(hasSession);
+      setAuthenticated(session.authenticated);
+      setIsAdmin(!!session.isAdmin);
+      if (session.isAdmin) {
+        try {
+          setAdminMode(localStorage.getItem(ADMIN_MODE_KEY) === "true");
+        } catch {
+          setAdminMode(false);
+        }
+      } else {
+        setAdminMode(false);
+      }
       setAuthReady(true);
     });
     return () => {
@@ -86,8 +99,11 @@ export default function App() {
     window.location.hash = "login";
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = async () => {
     setAuthenticated(true);
+    const session = await restoreSessionFromServer();
+    setIsAdmin(!!session.isAdmin);
+    setAdminMode(false);
     window.location.hash = "dashboard";
   };
 
@@ -98,8 +114,15 @@ export default function App() {
   const [milesFilter, setMilesFilter] = useState("10");
 
   const selectedClinic = useMemo(
-    () => clinics.find((clinic) => clinic.id === selectedClinicId) ?? null,
-    [clinics, selectedClinicId]
+    () => {
+      const clinic = clinics.find((row) => row.id === selectedClinicId) ?? null;
+      if (!clinic) return null;
+      return {
+        ...clinic,
+        canManage: !!clinic.ownedByCurrentUser || (isAdmin && adminMode && clinic.canManage)
+      };
+    },
+    [clinics, selectedClinicId, isAdmin, adminMode]
   );
 
   const handleSelectClinic = (clinicId) => {
@@ -192,9 +215,19 @@ export default function App() {
           window.location.reload();
         }}
         userEmail={getStoredEmail()}
+        isAdmin={isAdmin}
+        adminMode={adminMode}
+        onAdminModeChange={(nextValue) => {
+          setAdminMode(nextValue);
+          try {
+            localStorage.setItem(ADMIN_MODE_KEY, String(nextValue));
+          } catch {}
+        }}
         onLogout={async () => {
           await clearSession();
           setAuthenticated(false);
+          setIsAdmin(false);
+          setAdminMode(false);
           window.location.hash = "intro";
         }}
       />

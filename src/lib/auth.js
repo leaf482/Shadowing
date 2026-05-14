@@ -114,12 +114,16 @@ export async function restoreSessionFromServer() {
     const data = await res.json().catch(() => ({}));
     if (data?.email) {
       setSession(data.email);
-      return true;
+      return {
+        authenticated: true,
+        email: data.email,
+        isAdmin: !!data.isAdmin
+      };
     }
     clearLocalSessionStorage();
-    return false;
+    return { authenticated: false, isAdmin: false };
   } catch {
-    return false;
+    return { authenticated: false, isAdmin: false };
   }
 }
 

@@ -419,6 +419,7 @@ const mapClinicRow = (row, viewerUserId = null) => {
     lastVerifiedAt: row.last_verified_at,
     lockExpiresAt: row.lock_expires_at ?? null,
     lockedByRequestId: row.locked_by_request_id ?? null,
+    ownedByCurrentUser: !!viewerUserId && row.created_by_user_id === viewerUserId,
     canManage: canManageClinic(row, viewerUserId)
   };
 };
@@ -1406,7 +1407,7 @@ app.get("/api/auth/session", async (req, res) => {
     res.status(401).json({ authenticated: false, requestId: req.requestId || "unknown" });
     return;
   }
-  res.json({ authenticated: true, email: userId });
+  res.json({ authenticated: true, email: userId, isAdmin: isAdminUser(userId) });
 });
 
 // --- Email verification ---
