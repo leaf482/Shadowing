@@ -31,7 +31,7 @@
     "@sentry/react": "^10.53.1",
     "compression": "^1.8.1",
     "concurrently": "^8.2.2",
-    "express": "^4.19.2",
+    "express": "^5.2.1",
     "helmet": "^8.1.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
