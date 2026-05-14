@@ -6,6 +6,7 @@ parallel = true
 
 [default.deploy.parameters]
 stack_name = "shadowing-api-dev"
+region = "us-west-2"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
