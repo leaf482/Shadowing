@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Remove local/VM build caches and transient env backups under the repo (safe to re-run).
+# Windows without bash: npm run cleanup:artifacts
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

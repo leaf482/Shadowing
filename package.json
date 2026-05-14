@@ -17,7 +17,8 @@
     "preview": "vite preview",
     "test:smoke:auth": "node --test server/auth.smoke.test.mjs",
     "migrate:dynamo": "node scripts/migrate-sqlite-to-dynamo.mjs",
-    "migrate:dynamo:from-stack": "bash scripts/migrate-dynamo-from-stack.sh"
+    "migrate:dynamo:from-stack": "bash scripts/migrate-dynamo-from-stack.sh",
+    "cleanup:artifacts": "node scripts/cleanup-artifacts.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1046.0",
