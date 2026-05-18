@@ -164,25 +164,25 @@ a { color: var(--accent); }
   min-height: 220px;
 }
 
-/* Fixed-height frame for the intro “map concept” illustration */
-.intro-feature__media--map {
-  position: relative;
-  height: clamp(220px, 42vw, 320px);
-  min-height: 220px;
-}
-.intro-feature__media--map > .intro-map-preview {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  border-radius: 14px;
-}
-.intro-feature__media--map > .intro-map-preview.intro-map-preview--fallback {
+/* Intro platform preview — dashboard / tracker screenshots */
+.intro-feature__media--dashboard,
+.intro-feature__media--tracker {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0.45rem;
+  min-height: clamp(200px, 34vw, 320px);
+  background: linear-gradient(160deg, #f1f5f9 0%, #e8eef8 100%);
 }
+.intro-feature__img {
+  width: 100%;
+  height: auto;
+  max-height: min(440px, 70vh);
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
+}
+
 .intro__footer {
   width: min(980px, 100%);
   margin: 0 auto;
@@ -383,40 +383,6 @@ a { color: var(--accent); }
   min-height: 220px;
   border-radius: 14px;
   background: linear-gradient(145deg, #f8fbff 0%, #ebf2ff 100%);
-}
-
-.tracker-mock {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.tracker-mock__row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.84rem;
-  color: var(--text-2);
-}
-.tracker-mock__row strong {
-  color: var(--text);
-}
-.tracker-mock__bar {
-  height: 8px;
-  background: #dbeafe;
-  border-radius: 999px;
-  overflow: hidden;
-}
-.tracker-mock__bar span {
-  display: block;
-  height: 100%;
-  background: #2563eb;
-}
-.tracker-mock__bar--green {
-  background: #d1fae5;
-}
-.tracker-mock__bar--green span {
-  background: #059669;
 }
 
 .login {
@@ -2138,12 +2104,12 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   .intro__hero { min-height: calc(100vh - 2.5rem); }
   .intro__overview-head h2 { font-size: 1.18rem; }
   .intro-feature { padding: 0.8rem; }
-  .intro-feature__media:not(.intro-feature__media--map) {
-    min-height: 180px;
+  .intro-feature__media--dashboard,
+  .intro-feature__media--tracker {
+    min-height: clamp(160px, 52vw, 280px);
   }
-  .intro-feature__media--map {
-    height: clamp(200px, 56vw, 280px);
-    min-height: 200px;
+  .intro-feature__img {
+    max-height: min(320px, 58vh);
   }
   .dash-grid {
     grid-template-columns: 1fr;

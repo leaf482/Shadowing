@@ -1,5 +1,6 @@
 import logoImg from "../logo/logo.png";
-import IntroMapPreview from "./IntroMapPreview.jsx";
+import dashboardImg from "../assets/intro-dashboard.png";
+import trackerImg from "../assets/intro-tracker.png";
 
 export default function IntroPage({ onGetStarted }) {
   return (
@@ -20,7 +21,7 @@ export default function IntroPage({ onGetStarted }) {
           >
             Get started
           </button>
-          <p className="intro__scroll-hint">Scroll to preview map and tracker features</p>
+          <p className="intro__scroll-hint">Scroll to preview dashboard and tracker features</p>
         </div>
       </section>
 
@@ -30,11 +31,14 @@ export default function IntroPage({ onGetStarted }) {
         </div>
 
         <article className="intro-feature">
-          <div
-            className="intro-feature__media intro-feature__media--map"
-            aria-hidden="true"
-          >
-            <IntroMapPreview />
+          <div className="intro-feature__media intro-feature__media--dashboard">
+            <img
+              src={dashboardImg}
+              alt="Dashboard preview showing the clinic map, filters, and clinic details panel."
+              className="intro-feature__img"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
           <div className="intro-feature__content">
             <h3>Verified Shadowing Map</h3>
@@ -45,24 +49,14 @@ export default function IntroPage({ onGetStarted }) {
         </article>
 
         <article className="intro-feature intro-feature--reverse">
-          <div className="intro-feature__media intro-feature__media--tracker" aria-hidden="true">
-            <div className="tracker-mock">
-              <div className="tracker-mock__row">
-                <span>Walker &amp; Krause</span>
-                <strong>24.5h</strong>
-              </div>
-              <div className="tracker-mock__bar"><span style={{ width: "78%" }} /></div>
-              <div className="tracker-mock__row">
-                <span>Community Dental</span>
-                <strong>11.0h</strong>
-              </div>
-              <div className="tracker-mock__bar"><span style={{ width: "46%" }} /></div>
-              <div className="tracker-mock__row">
-                <span>Volunteering</span>
-                <strong>8.75h</strong>
-              </div>
-              <div className="tracker-mock__bar tracker-mock__bar--green"><span style={{ width: "34%" }} /></div>
-            </div>
+          <div className="intro-feature__media intro-feature__media--tracker">
+            <img
+              src={trackerImg}
+              alt="My tracker preview showing shadowing hours, volunteering placements, and AADSAS entries."
+              className="intro-feature__img"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
           <div className="intro-feature__content">
             <h3>Shadowing and Volunteering Tracking</h3>
