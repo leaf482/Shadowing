@@ -21,58 +21,85 @@ export default function IntroPage({ onGetStarted }) {
           >
             Get started
           </button>
-          <p className="intro__scroll-hint">Scroll to preview dashboard and tracker features</p>
+          <p className="intro__scroll-hint">
+            Scroll to preview dashboard and tracker features
+          </p>
         </div>
       </section>
 
-      <section className="intro__overview">
-        <div className="intro__overview-head">
-          <h2>Platform Preview</h2>
+      <section className="intro__overview intro-preview" aria-labelledby="intro-preview-title">
+        <header className="intro-preview__header">
+          <p className="intro-eyebrow">Inside the platform</p>
+          <h2 id="intro-preview-title">See how it works</h2>
+          <p className="intro-preview__lead">
+            A verified clinic map plus a single place to log hours—built so you spend less time chasing info and more time in clinics.
+          </p>
+        </header>
+
+        <div className="intro-preview__cards">
+          <article className="intro-preview-card">
+            <div className="intro-preview-card__copy">
+              <p className="intro-preview-card__step">
+                <span className="intro-preview-card__step-num">01</span>
+                <span className="intro-preview-card__step-label">Map</span>
+              </p>
+              <h3>Verified shadowing map</h3>
+              <ul className="intro-preview-card__bullets">
+                <li>Pierce County clinics with acceptance cues before you cold-call.</li>
+                <li>Statuses grounded in outreach and community updates—not rumors.</li>
+                <li>Open details when you need addresses, notes, or next steps.</li>
+              </ul>
+            </div>
+            <div className="intro-preview-card__shot intro-preview-card__shot--dashboard">
+              <img
+                src={dashboardImg}
+                alt="Dashboard preview showing the clinic map, filters, and clinic details panel."
+                className="intro-preview-card__img"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          </article>
+
+          <article className="intro-preview-card intro-preview-card--alt">
+            <div className="intro-preview-card__copy">
+              <p className="intro-preview-card__step">
+                <span className="intro-preview-card__step-num">02</span>
+                <span className="intro-preview-card__step-label">Tracker</span>
+              </p>
+              <h3>Shadowing &amp; volunteering tracking</h3>
+              <ul className="intro-preview-card__bullets">
+                <li>Separate totals for shadowing vs volunteering—no mental math.</li>
+                <li>Clinic notes and outreach sit next to your hours in one workflow.</li>
+                <li>Records stay organized when it is time for AADSAS.</li>
+              </ul>
+              <aside className="intro-preview-card__aside">
+                <strong>For applications:</strong> documentation stays tight without juggling spreadsheets or scattered screenshots.
+              </aside>
+            </div>
+            <div className="intro-preview-card__shot intro-preview-card__shot--tracker">
+              <img
+                src={trackerImg}
+                alt="My tracker preview showing shadowing hours, volunteering placements, and AADSAS entries."
+                className="intro-preview-card__img"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          </article>
         </div>
-
-        <article className="intro-feature">
-          <div className="intro-feature__media intro-feature__media--dashboard">
-            <img
-              src={dashboardImg}
-              alt="Dashboard preview showing the clinic map, filters, and clinic details panel."
-              className="intro-feature__img"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-          <div className="intro-feature__content">
-            <h3>Verified Shadowing Map</h3>
-            <p>
-              See which dental clinics are actually open to student observers, confirmed through direct outreach and community reports.
-            </p>
-          </div>
-        </article>
-
-        <article className="intro-feature intro-feature--reverse">
-          <div className="intro-feature__media intro-feature__media--tracker">
-            <img
-              src={trackerImg}
-              alt="My tracker preview showing shadowing hours, volunteering placements, and AADSAS entries."
-              className="intro-feature__img"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-          <div className="intro-feature__content">
-            <h3>Shadowing and Volunteering Tracking</h3>
-            <p>
-              Log shadowing hours, volunteering, clinic notes, and outreach activity in one place, with separate totals and organized records ready for AADSAS.
-            </p>
-            <p className="muted small">Goal: application ready documentation without spreadsheets or scattered notes.</p>
-          </div>
-        </article>
       </section>
 
       <footer className="intro__footer">
-        <p>Student-run directory. Data is publicly sourced and community maintained. Clinics may request removal at any time.</p>
+        <p>
+          Student-run directory. Data is publicly sourced and community
+          maintained. Clinics may request removal at any time.
+        </p>
         <p>
           Questions? Contact{" "}
-          <a href="mailto:shadowingnetwork2026@gmail.com">shadowingnetwork2026@gmail.com</a>
+          <a href="mailto:shadowingnetwork2026@gmail.com">
+            shadowingnetwork2026@gmail.com
+          </a>
         </p>
       </footer>
     </div>
