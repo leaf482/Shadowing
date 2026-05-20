@@ -91,6 +91,53 @@ function logAuthEventForRequest(req, event, details = {}) {
   logAuthEvent(event, authRequestMeta(req, details));
 }
 
+async function sendAuthEmail({ to, subject, html, purpose }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
+  if (!apiKey) {
+    const reason = "missing_resend_api_key";
+    logAuthEvent(`${purpose}_email_skipped`, { email: maskEmail(to), reason });
+    return process.env.NODE_ENV === "production"
+      ? { sent: false, reason }
+      : { sent: true, skipped: true };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      logAuthEvent(`${purpose}_email_failed`, {
+        email: maskEmail(to),
+        providerStatus: response.status,
+        providerBody: body.slice(0, 300),
+      });
+      return { sent: false, reason: "provider_error", providerStatus: response.status };
+    }
+  } catch (error) {
+    logAuthEvent(`${purpose}_email_failed`, {
+      email: maskEmail(to),
+      reason: "provider_exception",
+      message: error?.message || "unknown",
+    });
+    return { sent: false, reason: "provider_exception" };
+  }
+
+  return { sent: true };
+}
+
 function sendError(req, res, status, error, extra = {}) {
   res.status(status).json({
     error,
@@ -1523,21 +1570,11 @@ async function sendVerificationCode(email, options = {}) {
 
   await repos.users.updateVerificationSend(email, code, expiresAt, nowIso);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
-  if (!apiKey) return { sent: true };
-
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [email],
-      subject: "Your Shadow Network verification code",
-      html: `
+  const delivery = await sendAuthEmail({
+    to: email,
+    subject: "Your Shadow Network verification code",
+    purpose: "verification",
+    html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2>Verify your email</h2>
           <p>Enter this code to complete sign-in:</p>
@@ -1545,8 +1582,9 @@ async function sendVerificationCode(email, options = {}) {
           <p style="color:#888;font-size:0.875rem">Expires in 10 minutes. If you did not request this, ignore this email.</p>
         </div>
       `,
-    }),
-  }).catch(() => {});
+  });
+
+  if (!delivery.sent) return delivery;
 
   return { sent: true };
 }
@@ -1573,21 +1611,11 @@ async function sendPasswordResetCode(email, options = {}) {
 
   await repos.users.updatePasswordResetSend(email, code, expiresAt, nowIso);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
-  if (!apiKey) return { sent: true };
-
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [email],
-      subject: "Shadow Network password reset code",
-      html: `
+  const delivery = await sendAuthEmail({
+    to: email,
+    subject: "Shadow Network password reset code",
+    purpose: "password_reset",
+    html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2>Reset your password</h2>
           <p>Use this code to reset your Shadow Network password:</p>
@@ -1595,8 +1623,9 @@ async function sendPasswordResetCode(email, options = {}) {
           <p style="color:#888;font-size:0.875rem">This code expires in 10 minutes. If you did not request a password reset, you can safely ignore this email.</p>
         </div>
       `,
-    }),
-  }).catch(() => {});
+  });
+
+  if (!delivery.sent) return delivery;
 
   return { sent: true };
 }
@@ -1627,6 +1656,14 @@ app.post("/api/auth/send-verification", async (req, res) => {
       "Please wait before requesting another verification code.",
       { retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000) }
     );
+    return;
+  }
+  if (!result.sent) {
+    logAuthEventForRequest(req, "verification_send_failed", {
+      email: maskEmail(normalizedEmail),
+      reason: result.reason || "unknown",
+    });
+    sendError(req, res, 502, "Could not send verification email. Please try again shortly.");
     return;
   }
 
@@ -1704,6 +1741,14 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       "Please wait before requesting another reset code.",
       { retryAfterSeconds: Math.ceil((result.retryAfterMs ?? 0) / 1000) }
     );
+    return;
+  }
+  if (!result.sent) {
+    logAuthEventForRequest(req, "password_reset_send_failed", {
+      email: maskEmail(normalizedEmail),
+      reason: result.reason || "unknown",
+    });
+    res.json({ ok: true });
     return;
   }
 

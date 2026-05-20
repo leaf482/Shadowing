@@ -106,11 +106,17 @@ export default function LoginPage({ onSuccess, onBack }) {
           return;
         }
 
-        await fetch("/api/auth/send-verification", {
+        const verificationRes = await fetch("/api/auth/send-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: trimmedEmail }),
-        }).catch(() => {});
+        });
+        if (!verificationRes.ok) {
+          const verificationData = await verificationRes.json().catch(() => ({}));
+          setError(toErrorMessage(verificationData, "Could not send verification code. Please try again."));
+          setSubmitting(false);
+          return;
+        }
 
         setPendingEmail(trimmedEmail);
         setStep("verify");

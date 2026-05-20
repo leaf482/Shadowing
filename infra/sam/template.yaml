@@ -18,17 +18,21 @@ Parameters:
     Type: String
     Default: ""
     Description: Comma-separated admin emails for ADMIN_EMAILS (optional).
+  ResendApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Resend API key used for verification and password reset emails.
+  FromEmail:
+    Type: String
+    Default: "Shadow Network <noreply@shadowingnetwork.com>"
+    Description: Verified sender identity for auth emails.
   LambdaMemoryMb:
     Type: Number
     Default: 256
     Description: Lambda memory (MB); lower = cheaper per ms — raise if cold starts OOM.
     MinValue: 128
     MaxValue: 3008
-  LogRetentionDays:
-    Type: Number
-    Default: 7
-    Description: CloudWatch log retention for Lambda (avoid infinite growth charges).
-    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 180, 365]
 Resources:
   ClinicsTable:
     Type: AWS::DynamoDB::Table
@@ -205,6 +209,8 @@ Resources:
           TABLE_AUDIT_LOGS: !Ref AuditLogsTable
           TABLE_QUALITY_FLAGS: !Ref QualityFlagsTable
           ADMIN_EMAILS: !Ref AdminEmails
+          RESEND_API_KEY: !Ref ResendApiKey
+          FROM_EMAIL: !Ref FromEmail
       Events:
         ApiRoot:
           Type: HttpApi
@@ -218,13 +224,6 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /{proxy+}
             Method: ANY
-
-  ApiFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    DependsOn: ApiFunction
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
-      RetentionInDays: !Ref LogRetentionDays
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
