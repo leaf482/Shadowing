@@ -9,10 +9,10 @@ export default function IntroPage({ onGetStarted }) {
         <div className="intro__inner">
           <img src={logoImg} alt="" className="intro__logo" />
           <p className="intro__tagline">
-            Find dental shadowing opportunities in the UW Tacoma region.
+            Find dental shadowing opportunities
           </p>
           <p className="intro__muted">
-            Verified clinics, one request at a time.
+            Shadow smart, shadow secure
           </p>
           <button
             type="button"
@@ -29,10 +29,15 @@ export default function IntroPage({ onGetStarted }) {
 
       <section className="intro__overview intro-preview" aria-labelledby="intro-preview-title">
         <header className="intro-preview__header">
-          <p className="intro-eyebrow">Inside the platform</p>
-          <h2 id="intro-preview-title">See how it works</h2>
+          <p className="intro-eyebrow">Platform Overview</p>
+          <h2 id="intro-preview-title">
+            Creating a system that makes verified shadowing opportunities more
+            accessible for students without existing connections, while also using
+            built in safeguards to prevent clinics from being overwhelmed with
+            excessive outreach.
+          </h2>
           <p className="intro-preview__lead">
-            A verified clinic map plus a single place to log hours—built so you spend less time chasing info and more time in clinics.
+            Right now it&apos;s open to anyone with UW email
           </p>
         </header>
 
@@ -45,9 +50,18 @@ export default function IntroPage({ onGetStarted }) {
               </p>
               <h3>Verified shadowing map</h3>
               <ul className="intro-preview-card__bullets">
-                <li>Pierce County clinics with acceptance cues before you cold-call.</li>
-                <li>Statuses grounded in outreach and community updates—not rumors.</li>
-                <li>Open details when you need addresses, notes, or next steps.</li>
+                <li>
+                  Verified clinic map with real community reported shadowing
+                  availability across Pierce County.
+                </li>
+                <li>
+                  Reserve system helps prevent clinics from getting overwhelmed
+                  with dozens of student requests at once.
+                </li>
+                <li>
+                  Designed to streamline finding shadowing opportunities without
+                  the awkward cold calling and constant guessing.
+                </li>
               </ul>
             </div>
             <div className="intro-preview-card__shot intro-preview-card__shot--dashboard">
@@ -69,12 +83,15 @@ export default function IntroPage({ onGetStarted }) {
               </p>
               <h3>Shadowing &amp; volunteering tracking</h3>
               <ul className="intro-preview-card__bullets">
-                <li>Separate totals for shadowing vs volunteering—no mental math.</li>
-                <li>Clinic notes and outreach sit next to your hours in one workflow.</li>
-                <li>Records stay organized when it is time for AADSAS.</li>
+                <li>
+                  Log shadowing hours, volunteering, clinic notes, and outreach
+                  activity in one place, with separate totals and organized records
+                  ready for AADSAS.
+                </li>
               </ul>
               <aside className="intro-preview-card__aside">
-                <strong>For applications:</strong> documentation stays tight without juggling spreadsheets or scattered screenshots.
+                <strong>Goal:</strong> keep your application records organized
+                without spreadsheets, scattered notes, or lost hours.
               </aside>
             </div>
             <div className="intro-preview-card__shot intro-preview-card__shot--tracker">
