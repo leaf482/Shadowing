@@ -37,7 +37,7 @@ export default function IntroPage({ onGetStarted }) {
             excessive outreach.
           </h2>
           <p className="intro-preview__lead">
-            Right now it&apos;s open to anyone with UW email
+            Right now it&apos;s open to anyone with a school email
           </p>
         </header>
 
