@@ -23,6 +23,7 @@ export default function TrackerPage() {
   const [editingExp, setEditingExp] = useState(null); // experience object being edited
   const [saveError, setSaveError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     loadProjects();
@@ -60,15 +61,27 @@ export default function TrackerPage() {
   const loadProjects = async () => {
     try {
       const res = await authFetch("/api/projects");
-      if (res.ok) setProjects(await res.json());
-    } catch {}
+      if (res.ok) {
+        setProjects(await res.json());
+      } else {
+        setLoadError("Could not load tracker projects. Try refreshing the page.");
+      }
+    } catch {
+      setLoadError("Could not load tracker projects. Try refreshing the page.");
+    }
   };
 
   const loadExperiences = async () => {
     try {
       const res = await authFetch("/api/experiences");
-      if (res.ok) setExperiences(await res.json());
-    } catch {}
+      if (res.ok) {
+        setExperiences(await res.json());
+      } else {
+        setLoadError("Could not load tracker data. Try refreshing the page.");
+      }
+    } catch {
+      setLoadError("Could not load tracker data. Try refreshing the page.");
+    }
   };
 
   const handleCreateProject = async (payload) => {
@@ -329,6 +342,12 @@ export default function TrackerPage() {
           </button>
         )}
       </div>
+
+      {loadError && (
+        <p className="muted small" style={{ color: "#dc2626", marginBottom: "0.85rem" }} role="alert">
+          {loadError}
+        </p>
+      )}
 
       {actionError && (
         <p className="muted small" style={{ color: "#dc2626", marginBottom: "0.85rem" }} role="alert">

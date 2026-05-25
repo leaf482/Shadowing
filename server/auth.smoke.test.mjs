@@ -52,6 +52,8 @@ test("login failure paths include requestId", async (t) => {
     body: JSON.stringify({ email, password }),
   });
   assert.equal(registerRes.status, 201);
+  const registerBody = await registerRes.json();
+  assert.equal(registerBody.verificationSent, true);
 
   const wrongPasswordRes = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",

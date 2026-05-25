@@ -44,7 +44,8 @@ export function createDynamoRepositories(env = process.env) {
     projects: env.TABLE_PROJECTS,
     placementSessions: env.TABLE_PLACEMENT_SESSIONS,
     auditLogs: env.TABLE_AUDIT_LOGS,
-    qualityFlags: env.TABLE_QUALITY_FLAGS
+    qualityFlags: env.TABLE_QUALITY_FLAGS,
+    rateLimits: env.TABLE_RATE_LIMITS
   };
 
   const SESSION_TTL_SEC = Math.ceil(
@@ -105,12 +106,14 @@ export function createDynamoRepositories(env = process.env) {
         return out.Item ?? null;
       },
       async updateCreatedAt(token, createdAt) {
+        const ttl = Math.floor(Date.now() / 1000) + SESSION_TTL_SEC;
         await doc.send(
           new UpdateCommand({
             TableName: T.authSessions,
             Key: { token },
-            UpdateExpression: "SET created_at = :c",
-            ExpressionAttributeValues: { ":c": createdAt }
+            UpdateExpression: "SET created_at = :c, #ttl = :t",
+            ExpressionAttributeNames: { "#ttl": "ttl" },
+            ExpressionAttributeValues: { ":c": createdAt, ":t": ttl },
           })
         );
       }
@@ -180,6 +183,29 @@ export function createDynamoRepositories(env = process.env) {
             Item: { ...cur, lock_expires_at: lockExpiresAt, locked_by_request_id: lockedByRequestId }
           })
         );
+      },
+      async tryAcquireLock(clinicId, lockExpiresAt, lockedByRequestId, nowIso) {
+        try {
+          await doc.send(
+            new UpdateCommand({
+              TableName: T.clinics,
+              Key: { id: clinicId },
+              UpdateExpression:
+                "SET lock_expires_at = :exp, locked_by_request_id = :rid",
+              ConditionExpression:
+                "attribute_not_exists(lock_expires_at) OR lock_expires_at <= :now",
+              ExpressionAttributeValues: {
+                ":exp": lockExpiresAt,
+                ":rid": lockedByRequestId,
+                ":now": nowIso
+              }
+            })
+          );
+          return true;
+        } catch (err) {
+          if (err?.name === "ConditionalCheckFailedException") return false;
+          throw err;
+        }
       },
       async clearLockByRequestId(requestId) {
         const items = await scanAll(doc, {
@@ -268,11 +294,22 @@ export function createDynamoRepositories(env = process.env) {
         );
       },
       async countActiveForUser(userId, nowIso) {
-        const items = await scanAll(doc, {
-          TableName: T.shadowingRequests,
-          FilterExpression: "user_id = :u AND lock_expires_at > :n",
-          ExpressionAttributeValues: { ":u": userId, ":n": nowIso }
-        });
+        const items = [];
+        let ExclusiveStartKey;
+        do {
+          const out = await doc.send(
+            new QueryCommand({
+              TableName: T.shadowingRequests,
+              IndexName: "UserIdIndex",
+              KeyConditionExpression: "user_id = :u",
+              FilterExpression: "lock_expires_at > :n",
+              ExpressionAttributeValues: { ":u": userId, ":n": nowIso },
+              ExclusiveStartKey
+            })
+          );
+          items.push(...(out.Items ?? []));
+          ExclusiveStartKey = out.LastEvaluatedKey;
+        } while (ExclusiveStartKey);
         return items.length;
       },
       async deleteExpired(nowIso) {
@@ -694,6 +731,49 @@ export function createDynamoRepositories(env = process.env) {
           .sort((a, b) =>
             String(a.last_verified_at ?? "").localeCompare(String(b.last_verified_at ?? ""))
           );
+      }
+    },
+
+    rateLimits: {
+      async isRateLimited(key, maxAttempts, windowMs, now = Date.now()) {
+        if (!T.rateLimits) return false;
+        const out = await doc.send(new GetCommand({ TableName: T.rateLimits, Key: { key } }));
+        const item = out.Item;
+        if (!item) return false;
+        const windowStart = Number(item.window_start ?? 0);
+        if (now - windowStart > windowMs) return false;
+        return Number(item.count ?? 0) >= maxAttempts;
+      },
+
+      async recordFailedAttempt(key, windowMs, now = Date.now()) {
+        if (!T.rateLimits) return;
+        const ttl = Math.floor((now + windowMs) / 1000) + 3600;
+        const out = await doc.send(new GetCommand({ TableName: T.rateLimits, Key: { key } }));
+        const item = out.Item;
+        const windowStart = Number(item?.window_start ?? 0);
+        if (!item || now - windowStart > windowMs) {
+          await doc.send(
+            new PutCommand({
+              TableName: T.rateLimits,
+              Item: { key, count: 1, window_start: now, ttl }
+            })
+          );
+          return;
+        }
+        await doc.send(
+          new UpdateCommand({
+            TableName: T.rateLimits,
+            Key: { key },
+            UpdateExpression: "SET #c = #c + :one, #ttl = :ttl",
+            ExpressionAttributeNames: { "#c": "count", "#ttl": "ttl" },
+            ExpressionAttributeValues: { ":one": 1, ":ttl": ttl }
+          })
+        );
+      },
+
+      async clear(key) {
+        if (!T.rateLimits) return;
+        await doc.send(new DeleteCommand({ TableName: T.rateLimits, Key: { key } }));
       }
     }
   };

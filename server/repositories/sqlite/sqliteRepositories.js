@@ -1,3 +1,5 @@
+import { createInMemoryRateLimits } from "../rateLimits/inMemoryRateLimits.js";
+
 /**
  * SQLite-backed repository implementation for server routes.
  * Mirrors DynamoDB repo API (createDynamoRepositories).
@@ -111,6 +113,16 @@ export function createSqliteRepositories(db) {
           "update clinics set lock_expires_at = ?, locked_by_request_id = ? where id = ?",
           [lockExpiresAt, lockedByRequestId, clinicId]
         );
+      },
+      async tryAcquireLock(clinicId, lockExpiresAt, lockedByRequestId, nowIso) {
+        const result = await db.run(
+          `update clinics
+             set lock_expires_at = ?, locked_by_request_id = ?
+           where id = ?
+             and (lock_expires_at is null or lock_expires_at <= ?)`,
+          [lockExpiresAt, lockedByRequestId, clinicId, nowIso]
+        );
+        return Number(result?.changes ?? 0) > 0;
       },
       async clearLockByRequestId(requestId) {
         await db.run(
@@ -556,6 +568,8 @@ export function createSqliteRepositories(db) {
           order by last_verified_at asc, name asc
         `);
       }
-    }
+    },
+
+    rateLimits: createInMemoryRateLimits(),
   };
 }

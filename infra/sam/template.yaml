@@ -27,6 +27,14 @@ Parameters:
     Type: String
     Default: "Shadow Network <noreply@shadowingnetwork.com>"
     Description: Verified sender identity for auth emails.
+  StaticBucketName:
+    Type: String
+    Default: "shadowing-static-dev-sitebucket-xnygmxwbe67z"
+    Description: S3 bucket for public clinics.json snapshot (static CDN stack).
+  CloudFrontDistributionId:
+    Type: String
+    Default: "E2XKSS6CLI091Q"
+    Description: CloudFront distribution to invalidate /clinics.json after clinic mutations.
   LambdaMemoryMb:
     Type: Number
     Default: 256
@@ -77,9 +85,34 @@ Resources:
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  RateLimitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
 
   ExperiencesTable:
     Type: AWS::DynamoDB::Table
@@ -193,6 +226,17 @@ Resources:
             TableName: !Ref AuditLogsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref QualityFlagsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub "arn:aws:s3:::${StaticBucketName}/clinics.json"
+            - Effect: Allow
+              Action:
+                - cloudfront:CreateInvalidation
+              Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}"
       Environment:
         Variables:
           NODE_ENV: production
@@ -208,9 +252,12 @@ Resources:
           TABLE_PLACEMENT_SESSIONS: !Ref PlacementSessionsTable
           TABLE_AUDIT_LOGS: !Ref AuditLogsTable
           TABLE_QUALITY_FLAGS: !Ref QualityFlagsTable
+          TABLE_RATE_LIMITS: !Ref RateLimitsTable
           ADMIN_EMAILS: !Ref AdminEmails
           RESEND_API_KEY: !Ref ResendApiKey
           FROM_EMAIL: !Ref FromEmail
+          STATIC_BUCKET: !Ref StaticBucketName
+          CLOUDFRONT_DISTRIBUTION_ID: !Ref CloudFrontDistributionId
       Events:
         ApiRoot:
           Type: HttpApi
@@ -252,3 +299,5 @@ Outputs:
     Value: !Ref AuditLogsTable
   TableQualityFlags:
     Value: !Ref QualityFlagsTable
+  TableRateLimits:
+    Value: !Ref RateLimitsTable

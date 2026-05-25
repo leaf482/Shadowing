@@ -1,12 +1,12 @@
 import compression from "compression";
 import express from "express";
 import helmet from "helmet";
-import * as Sentry from "@sentry/node";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { toAadsasRecords, toCsv } from "./export.js";
 import { writeClinicsSnapshotRows } from "./clinicsSnapshot.js";
+import { publishClinicsSnapshotCdn } from "./publishClinicsSnapshotCdn.js";
 import { createRepositories } from "./repositories/createRepositories.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,8 +60,9 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean)
 );
 
-const loginAttemptsByIp = new Map();
-const loginAttemptsByAccount = new Map();
+function loginRateLimitKey(kind, value) {
+  return `login:${kind}:${value}`;
+}
 
 function maskEmail(email) {
   if (!email || !email.includes("@")) return "unknown";
@@ -97,7 +98,7 @@ async function sendAuthEmail({ to, subject, html, purpose }) {
   if (!apiKey) {
     const reason = "missing_resend_api_key";
     logAuthEvent(`${purpose}_email_skipped`, { email: maskEmail(to), reason });
-    return process.env.NODE_ENV === "production"
+    return process.env.NODE_ENV === "production" && process.env.CI !== "true"
       ? { sent: false, reason }
       : { sent: true, skipped: true };
   }
@@ -117,8 +118,8 @@ async function sendAuthEmail({ to, subject, html, purpose }) {
       }),
     });
 
+    const body = await response.text().catch(() => "");
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
       logAuthEvent(`${purpose}_email_failed`, {
         email: maskEmail(to),
         providerStatus: response.status,
@@ -126,6 +127,14 @@ async function sendAuthEmail({ to, subject, html, purpose }) {
       });
       return { sent: false, reason: "provider_error", providerStatus: response.status };
     }
+
+    let providerId = null;
+    try {
+      providerId = JSON.parse(body)?.id ?? null;
+    } catch {
+      providerId = null;
+    }
+    logAuthEvent(`${purpose}_email_sent`, { email: maskEmail(to), providerId });
   } catch (error) {
     logAuthEvent(`${purpose}_email_failed`, {
       email: maskEmail(to),
@@ -144,26 +153,6 @@ function sendError(req, res, status, error, extra = {}) {
     requestId: req.requestId || "unknown",
     ...extra,
   });
-}
-
-function isRateLimited(store, key, maxAttempts, windowMs, now = Date.now()) {
-  const entry = store.get(key);
-  if (!entry) return false;
-  if (now - entry.windowStart > windowMs) {
-    store.delete(key);
-    return false;
-  }
-  return entry.count >= maxAttempts;
-}
-
-function recordFailedAttempt(store, key, windowMs, now = Date.now()) {
-  const entry = store.get(key);
-  if (!entry || now - entry.windowStart > windowMs) {
-    store.set(key, { count: 1, windowStart: now });
-    return;
-  }
-  entry.count += 1;
-  store.set(key, entry);
 }
 
 const app = express();
@@ -238,23 +227,25 @@ if (process.env.AWS_EXECUTION_ENV && API_GATEWAY_STAGE && API_GATEWAY_STAGE !== 
 }
 
 app.use(express.json({ limit: "512kb" }));
-app.use(
-  express.static(join(__dirname, "../dist"), {
-    etag: true,
-    lastModified: true,
-    setHeaders(res, filePath) {
-      if (process.env.NODE_ENV !== "production") return;
-      const normalized = filePath.replace(/\\/g, "/");
-      if (normalized.includes("/assets/")) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else if (normalized.endsWith("index.html")) {
-        res.setHeader("Cache-Control", "no-cache");
-      } else {
-        res.setHeader("Cache-Control", "public, max-age=86400");
-      }
-    }
-  })
-);
+if (!process.env.AWS_EXECUTION_ENV) {
+  app.use(
+    express.static(join(__dirname, "../dist"), {
+      etag: true,
+      lastModified: true,
+      setHeaders(res, filePath) {
+        if (process.env.NODE_ENV !== "production") return;
+        const normalized = filePath.replace(/\\/g, "/");
+        if (normalized.includes("/assets/")) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (normalized.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=86400");
+        }
+      },
+    })
+  );
+}
 
 const repos = await createRepositories();
 
@@ -361,12 +352,15 @@ async function refreshClinicsSnapshot() {
   try {
     const rows = await repos.clinics.selectAllOrdered();
     await writeClinicsSnapshotRows(rows, CLINICS_SNAPSHOT_PATH);
+    await publishClinicsSnapshotCdn(CLINICS_SNAPSHOT_PATH);
   } catch (error) {
     console.error("[clinics snapshot]", error);
   }
 }
 
-await refreshClinicsSnapshot();
+if (!process.env.AWS_EXECUTION_ENV) {
+  await refreshClinicsSnapshot();
+}
 
 function parseCookies(req) {
   const rawCookie = req.headers.cookie;
@@ -723,16 +717,28 @@ app.post("/api/clinics/:id/request", async (req, res) => {
   expiresAt.setDate(expiresAt.getDate() + COOLDOWN_DAYS);
   const expiresAtIso = expiresAt.toISOString();
 
-  await repos.shadowingRequests.insert({
-    id: requestId,
-    clinic_id: clinicId,
-    user_id: userId,
-    lock_expires_at: expiresAtIso,
-    reserve_units: 1,
-    created_at: now
-  });
+  const lockAcquired = await repos.clinics.tryAcquireLock(clinicId, expiresAtIso, requestId, now);
+  if (!lockAcquired) {
+    res.status(409).json({
+      error: "This clinic was just reserved by someone else. Please try again shortly.",
+      lockExpiresAt: clinic.lock_expires_at ?? null
+    });
+    return;
+  }
 
-  await repos.clinics.setLock(clinicId, expiresAtIso, requestId);
+  try {
+    await repos.shadowingRequests.insert({
+      id: requestId,
+      clinic_id: clinicId,
+      user_id: userId,
+      lock_expires_at: expiresAtIso,
+      reserve_units: 1,
+      created_at: now
+    });
+  } catch (err) {
+    await repos.clinics.clearLockByRequestId(requestId);
+    throw err;
+  }
 
   const updated = await repos.clinics.findById(clinicId);
   res.status(201).json({
@@ -1472,9 +1478,24 @@ app.post("/api/auth/register", async (req, res) => {
   const passwordHash = hashPassword(password);
   await repos.users.insert(normalizedEmail, passwordHash);
 
+  const sendResult = await sendVerificationCode(normalizedEmail, { enforceResendCooldown: false });
+  if (!sendResult.sent) {
+    logAuthEventForRequest(req, "register_verification_send_failed", {
+      email: maskEmail(normalizedEmail),
+      reason: sendResult.reason || "unknown",
+    });
+    sendError(
+      req,
+      res,
+      502,
+      "Account was created but we could not send a verification email. Use “Resend code” to try again."
+    );
+    return;
+  }
+
   logAuthEventForRequest(req, "register_success", { email: maskEmail(normalizedEmail) });
 
-  res.status(201).json({ email: normalizedEmail });
+  res.status(201).json({ email: normalizedEmail, verificationSent: true });
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -1490,12 +1511,23 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   const now = Date.now();
-  const ipKey = `ip:${req.ip || "unknown"}`;
+  const ipKey = loginRateLimitKey("ip", req.ip || "unknown");
   const normalizedEmail = email.trim().toLowerCase();
+  const accountKey = loginRateLimitKey("account", normalizedEmail);
 
   if (
-    isRateLimited(loginAttemptsByIp, ipKey, LOGIN_MAX_ATTEMPTS_PER_IP, LOGIN_RATE_WINDOW_MS, now) ||
-    isRateLimited(loginAttemptsByAccount, normalizedEmail, LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, LOGIN_RATE_WINDOW_MS, now)
+    (await repos.rateLimits.isRateLimited(
+      ipKey,
+      LOGIN_MAX_ATTEMPTS_PER_IP,
+      LOGIN_RATE_WINDOW_MS,
+      now
+    )) ||
+    (await repos.rateLimits.isRateLimited(
+      accountKey,
+      LOGIN_MAX_ATTEMPTS_PER_ACCOUNT,
+      LOGIN_RATE_WINDOW_MS,
+      now
+    ))
   ) {
     logAuthEventForRequest(req, "login_rate_limited", { email: maskEmail(normalizedEmail) });
     sendError(req, res, 429, "Too many login attempts. Try again in 10 minutes.");
@@ -1505,18 +1537,30 @@ app.post("/api/auth/login", async (req, res) => {
   const user = await repos.users.findForLogin(normalizedEmail);
 
   if (!user || !verifyPassword(password, user.password_hash)) {
-    recordFailedAttempt(loginAttemptsByIp, ipKey, LOGIN_RATE_WINDOW_MS, now);
-    recordFailedAttempt(loginAttemptsByAccount, normalizedEmail, LOGIN_RATE_WINDOW_MS, now);
+    await repos.rateLimits.recordFailedAttempt(ipKey, LOGIN_RATE_WINDOW_MS, now);
+    await repos.rateLimits.recordFailedAttempt(accountKey, LOGIN_RATE_WINDOW_MS, now);
     logAuthEventForRequest(req, "login_failed", { email: maskEmail(normalizedEmail) });
     sendError(req, res, 401, "Invalid email or password.");
     return;
   }
 
-  loginAttemptsByAccount.delete(normalizedEmail);
+  await repos.rateLimits.clear(accountKey);
 
   if (!Number(user?.is_verified)) {
-    await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
-    logAuthEventForRequest(req, "login_unverified", { email: maskEmail(normalizedEmail) });
+    const sendResult = await sendVerificationCode(normalizedEmail, { enforceResendCooldown: true });
+    if (!sendResult.sent && sendResult.reason !== "resend_cooldown") {
+      logAuthEventForRequest(req, "login_verification_send_failed", {
+        email: maskEmail(normalizedEmail),
+        reason: sendResult.reason || "unknown",
+      });
+      sendError(req, res, 502, "Could not send verification email. Please try again shortly.");
+      return;
+    }
+    logAuthEventForRequest(req, "login_unverified", {
+      email: maskEmail(normalizedEmail),
+      verificationSent: sendResult.sent,
+      verificationReason: sendResult.reason || null,
+    });
     sendError(req, res, 403, "email_not_verified", { email: normalizedEmail });
     return;
   }
@@ -1748,7 +1792,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       email: maskEmail(normalizedEmail),
       reason: result.reason || "unknown",
     });
-    res.json({ ok: true });
+    sendError(req, res, 502, "Could not send password reset email. Please try again shortly.");
     return;
   }
 
@@ -1852,12 +1896,15 @@ app.get("/api/export/aadsas", async (req, res) => {
   res.json(records);
 });
 
-// SPA fallback — any non-API route returns index.html
-app.get("*", (_req, res) => {
-  res.sendFile(join(__dirname, "../dist/index.html"));
-});
+// SPA fallback — local Express only (CloudFront serves the SPA from S3)
+if (!process.env.AWS_EXECUTION_ENV) {
+  app.get("*", (_req, res) => {
+    res.sendFile(join(__dirname, "../dist/index.html"));
+  });
+}
 
 if (process.env.SENTRY_DSN?.trim()) {
+  const Sentry = await import("@sentry/node");
   Sentry.setupExpressErrorHandler(app);
 }
 

@@ -106,6 +106,13 @@ export default function LoginPage({ onSuccess, onBack }) {
           return;
         }
 
+        if (registerData.verificationSent) {
+          setPendingEmail(trimmedEmail);
+          setStep("verify");
+          setSubmitting(false);
+          return;
+        }
+
         const verificationRes = await fetch("/api/auth/send-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

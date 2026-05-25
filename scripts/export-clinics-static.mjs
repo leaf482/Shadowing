@@ -43,8 +43,8 @@ async function main() {
     await writeClinicsSnapshotRows(rows, outPath);
     console.log(`export-clinics-static: wrote ${outPath} (${rows.length} clinics, backend=${repos.backend})`);
   } catch (err) {
-    await writeFile(outPath, "[]\n", "utf8");
-    console.warn(`export-clinics-static: failed (${err.message}) — wrote empty ${outPath}`);
+    console.error(`export-clinics-static: failed (${err.message})`);
+    process.exit(1);
   }
 }
 

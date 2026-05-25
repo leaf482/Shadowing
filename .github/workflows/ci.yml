@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           export SQLITE_PATH="${RUNNER_TEMP}/shadowing-ci.db"
           export NODE_ENV=production
+          export CI=true
           export PORT=3000
           rm -f "$SQLITE_PATH"
           node --import ./instrument.mjs server/index.js &

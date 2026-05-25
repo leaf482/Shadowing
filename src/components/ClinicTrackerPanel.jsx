@@ -18,6 +18,7 @@ function formatLockExpires(lockExpiresAt) {
 
 export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClinics }) {
   const [hoursSummary, setHoursSummary] = useState(null);
+  const [hoursLoadError, setHoursLoadError] = useState("");
   const [loadingRequest, setLoadingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState("");
@@ -33,7 +34,10 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
 
   useEffect(() => {
     authFetch("/api/projects")
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r) => {
+        if (!r.ok) throw new Error("projects load failed");
+        return r.json();
+      })
       .then((projects) => {
         let shadowing = 0;
         let volunteering = 0;
@@ -50,8 +54,12 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
           }
         });
         setHoursSummary({ shadowing, volunteering });
+        setHoursLoadError("");
       })
-      .catch(() => {});
+      .catch(() => {
+        setHoursSummary(null);
+        setHoursLoadError("Could not load your tracker hours.");
+      });
   }, []);
 
   useEffect(() => {
@@ -87,7 +95,7 @@ export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClin
         </div>
       </div>
       <p className="muted small" style={{ marginTop: "0.4rem", marginBottom: 0 }}>
-        Split totals from your tracker entries
+        {hoursLoadError || "Split totals from your tracker entries"}
       </p>
     </div>
   );

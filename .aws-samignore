@@ -1,0 +1,36 @@
+# Frontend / static site (served from S3 + CloudFront, not Lambda)
+src/**
+dist/**
+index.html
+vite.config.js
+
+# Docs, scripts, infra templates
+docs/**
+scripts/**
+infra/**
+*.md
+DEPLOY.md
+README.md
+
+# Secrets and local artifacts
+.env
+.env.*
+.git/**
+tmp-deployed.js
+
+# Frontend-only npm dependencies
+node_modules/@vitejs/**
+node_modules/vite/**
+node_modules/react/**
+node_modules/react-dom/**
+node_modules/react-leaflet/**
+node_modules/leaflet/**
+node_modules/sharp/**
+node_modules/@sentry/react/**
+node_modules/concurrently/**
+node_modules/@esbuild/**
+node_modules/esbuild/**
+
+# AWS SDK clients not used by the API runtime
+node_modules/@aws-sdk/client-cloudfront/**
+node_modules/@aws-sdk/client-s3/**
