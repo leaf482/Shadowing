@@ -198,8 +198,26 @@ export function createSqliteRepositories(db) {
       async insert(email, passwordHash) {
         await db.run("insert into users (email, password_hash) values (?, ?)", [email, passwordHash]);
       },
+      async insertGoogle(email, googleSub) {
+        await db.run(
+          "insert into users (email, password_hash, is_verified, google_sub) values (?, '', 1, ?)",
+          [email, googleSub]
+        );
+      },
+      async linkGoogle(email, googleSub) {
+        await db.run("update users set google_sub = ?, is_verified = 1 where email = ?", [
+          googleSub,
+          email
+        ]);
+      },
+      async findByGoogleSub(googleSub) {
+        return db.get("select email, google_sub from users where google_sub = ?", [googleSub]);
+      },
       async findForLogin(email) {
-        return db.get("select email, password_hash, is_verified from users where email = ?", [email]);
+        return db.get(
+          "select email, password_hash, is_verified, google_sub from users where email = ?",
+          [email]
+        );
       },
       async findVerificationSentAt(email) {
         return db.get("select verification_sent_at from users where email = ?", [email]);

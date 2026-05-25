@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isUWEmail, setSession, consumeAuthNotice } from "../lib/auth.js";
+import GoogleSignInButton from "./GoogleSignInButton.jsx";
 
 export default function LoginPage({ onSuccess, onBack }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
@@ -18,6 +19,7 @@ export default function LoginPage({ onSuccess, onBack }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetResendCooldown, setResetResendCooldown] = useState(false);
   const [resetResendTimerId, setResetResendTimerId] = useState(null);
+  const [googleSignInEnabled, setGoogleSignInEnabled] = useState(false);
 
   useEffect(() => {
     const notice = consumeAuthNotice();
@@ -65,6 +67,11 @@ export default function LoginPage({ onSuccess, onBack }) {
     minLength: newPassword.length >= 8,
     hasLetter: /[A-Za-z]/.test(newPassword),
     hasNumber: /\d/.test(newPassword),
+  };
+
+  const handleGoogleSuccess = (signedInEmail) => {
+    setSession(signedInEmail);
+    onSuccess();
   };
 
   const handleSubmit = async (e) => {
@@ -543,15 +550,28 @@ export default function LoginPage({ onSuccess, onBack }) {
         </div>
 
         {mode === "register" && (
-          <p className="login__mode-badge" aria-live="polite">New account setup</p>
+          <p className="login__mode-badge" aria-live="polite">New account</p>
         )}
 
         <h1 className="login__title">{mode === "login" ? "Sign in" : "Create account"}</h1>
         <p className="login__subtitle muted">
           {mode === "login"
-            ? "Use your university .edu email to access the clinic directory and shadowing tools."
-            : "Create your Shadow Network account with a university .edu email. We'll send a verification code before first access."}
+            ? "Use your .edu Google account or email and password."
+            : "Sign up with Google or your .edu email. Email sign-up sends a verification code."}
         </p>
+
+        <GoogleSignInButton
+          disabled={submitting}
+          onSuccess={handleGoogleSuccess}
+          onError={setError}
+          onAvailable={setGoogleSignInEnabled}
+        />
+
+        {googleSignInEnabled ? (
+          <p className="login__divider muted" aria-hidden="true">
+            <span>or</span>
+          </p>
+        ) : null}
 
         <form className="login__form" onSubmit={handleSubmit}>
           <label>
@@ -594,6 +614,7 @@ export default function LoginPage({ onSuccess, onBack }) {
               >
                 Forgot password?
               </button>
+              <span className="login__forgot-note"> (email accounts only)</span>
             </p>
           )}
           {mode === "register" && (

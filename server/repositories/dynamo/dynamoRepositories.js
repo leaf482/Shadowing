@@ -363,6 +363,44 @@ export function createDynamoRepositories(env = process.env) {
           })
         );
       },
+      async insertGoogle(email, googleSub) {
+        await doc.send(
+          new PutCommand({
+            TableName: T.users,
+            Item: {
+              email,
+              google_sub: googleSub,
+              created_at: new Date().toISOString(),
+              is_verified: 1,
+              verification_attempts: 0,
+              password_reset_attempts: 0
+            }
+          })
+        );
+      },
+      async linkGoogle(email, googleSub) {
+        const out = await doc.send(new GetCommand({ TableName: T.users, Key: { email } }));
+        if (!out.Item) return;
+        await doc.send(
+          new PutCommand({
+            TableName: T.users,
+            Item: {
+              ...out.Item,
+              google_sub: googleSub,
+              is_verified: 1
+            }
+          })
+        );
+      },
+      async findByGoogleSub(googleSub) {
+        const items = await scanAll(doc, {
+          TableName: T.users,
+          FilterExpression: "google_sub = :g",
+          ExpressionAttributeValues: { ":g": googleSub }
+        });
+        const it = items[0];
+        return it ? { email: it.email, google_sub: it.google_sub } : null;
+      },
       async findForLogin(email) {
         const out = await doc.send(new GetCommand({ TableName: T.users, Key: { email } }));
         return out.Item ?? null;

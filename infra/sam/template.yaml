@@ -27,6 +27,10 @@ Parameters:
     Type: String
     Default: "Shadow Network <noreply@shadowingnetwork.com>"
     Description: Verified sender identity for auth emails.
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: Google OAuth Web client ID for Sign in with Google (.edu accounts).
   StaticBucketName:
     Type: String
     Default: "shadowing-static-dev-sitebucket-xnygmxwbe67z"
@@ -256,6 +260,7 @@ Resources:
           ADMIN_EMAILS: !Ref AdminEmails
           RESEND_API_KEY: !Ref ResendApiKey
           FROM_EMAIL: !Ref FromEmail
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
           STATIC_BUCKET: !Ref StaticBucketName
           CLOUDFRONT_DISTRIBUTION_ID: !Ref CloudFrontDistributionId
       Events:

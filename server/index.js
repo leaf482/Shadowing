@@ -8,6 +8,7 @@ import { toAadsasRecords, toCsv } from "./export.js";
 import { writeClinicsSnapshotRows } from "./clinicsSnapshot.js";
 import { publishClinicsSnapshotCdn } from "./publishClinicsSnapshotCdn.js";
 import { createRepositories } from "./repositories/createRepositories.js";
+import { verifyGoogleIdToken } from "./googleAuth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -179,8 +180,15 @@ app.use(
               "https://*.tile.openstreetmap.org",
               "https://tile.openstreetmap.org",
             ],
-            connectSrc: ["'self'", "https://nominatim.openstreetmap.org"],
-            fontSrc: ["'self'", "data:"],
+            connectSrc: [
+              "'self'",
+              "https://nominatim.openstreetmap.org",
+              "https://accounts.google.com",
+              "https://oauth2.googleapis.com",
+            ],
+            fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+            frameSrc: ["https://accounts.google.com"],
+            scriptSrc: ["'self'", "https://accounts.google.com"],
             objectSrc: ["'none'"],
             baseUri: ["'self'"],
             formAction: ["'self'"],
@@ -1443,6 +1451,67 @@ app.delete("/api/projects/:id/sessions/:sessionId", async (req, res) => {
 
 // --- Auth endpoints ---
 
+app.get("/api/auth/config", (_req, res) => {
+  const googleClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  res.json({ googleClientId: googleClientId || null });
+});
+
+app.post("/api/auth/google", async (req, res) => {
+  const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  if (!clientId) {
+    sendError(req, res, 503, "Google sign-in is not configured.");
+    return;
+  }
+
+  const { credential } = req.body ?? {};
+  if (!credential || typeof credential !== "string") {
+    sendError(req, res, 400, "Google credential is required.");
+    return;
+  }
+
+  const profile = await verifyGoogleIdToken(credential, clientId);
+  if (!profile) {
+    logAuthEventForRequest(req, "google_token_invalid", {});
+    sendError(req, res, 401, "Google sign-in failed. Please try again.");
+    return;
+  }
+
+  const { email, sub } = profile;
+  if (!isValidEduEmail(email)) {
+    logAuthEventForRequest(req, "google_edu_rejected", { email: maskEmail(email) });
+    sendError(req, res, 403, "Only university .edu email addresses are allowed.");
+    return;
+  }
+
+  const existingBySub = await repos.users.findByGoogleSub(sub);
+  if (existingBySub && existingBySub.email !== email) {
+    logAuthEventForRequest(req, "google_sub_conflict", { email: maskEmail(email) });
+    sendError(req, res, 409, "This Google account is linked to another user.");
+    return;
+  }
+
+  const user = await repos.users.findForLogin(email);
+  if (!user) {
+    await repos.users.insertGoogle(email, sub);
+    logAuthEventForRequest(req, "google_register", { email: maskEmail(email) });
+  } else {
+    if (user.google_sub && user.google_sub !== sub) {
+      logAuthEventForRequest(req, "google_email_conflict", { email: maskEmail(email) });
+      sendError(req, res, 409, "This email is linked to a different Google account.");
+      return;
+    }
+    if (!user.google_sub) {
+      await repos.users.linkGoogle(email, sub);
+    } else if (!Number(user.is_verified)) {
+      await repos.users.verifySuccess(email);
+    }
+    logAuthEventForRequest(req, "google_login", { email: maskEmail(email) });
+  }
+
+  await issueSession(email, res);
+  res.json({ email, isAdmin: isAdminUser(email) });
+});
+
 app.post("/api/auth/register", async (req, res) => {
   const { email, password } = req.body ?? {};
 
@@ -1536,7 +1605,24 @@ app.post("/api/auth/login", async (req, res) => {
 
   const user = await repos.users.findForLogin(normalizedEmail);
 
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!user) {
+    await repos.rateLimits.recordFailedAttempt(ipKey, LOGIN_RATE_WINDOW_MS, now);
+    await repos.rateLimits.recordFailedAttempt(accountKey, LOGIN_RATE_WINDOW_MS, now);
+    logAuthEventForRequest(req, "login_failed", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 401, "Invalid email or password.");
+    return;
+  }
+
+  const passwordHash = user.password_hash;
+  const usesGoogleOnly =
+    user.google_sub && (!passwordHash || String(passwordHash).trim() === "");
+  if (usesGoogleOnly) {
+    logAuthEventForRequest(req, "login_google_required", { email: maskEmail(normalizedEmail) });
+    sendError(req, res, 401, "This account uses Google sign-in.");
+    return;
+  }
+
+  if (!verifyPassword(password, passwordHash)) {
     await repos.rateLimits.recordFailedAttempt(ipKey, LOGIN_RATE_WINDOW_MS, now);
     await repos.rateLimits.recordFailedAttempt(accountKey, LOGIN_RATE_WINDOW_MS, now);
     logAuthEventForRequest(req, "login_failed", { email: maskEmail(normalizedEmail) });

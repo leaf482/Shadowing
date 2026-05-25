@@ -28,6 +28,7 @@ const adminEmails = env.ADMIN_EMAILS || "";
 const staticBucket =
   env.STATIC_BUCKET || env.STATIC_BUCKET_NAME || "shadowing-static-dev-sitebucket-xnygmxwbe67z";
 const cloudFrontId = env.CLOUDFRONT_DISTRIBUTION_ID || env.CF_DISTRIBUTION_ID || "E2XKSS6CLI091Q";
+const googleClientId = env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID || "";
 
 if (!resendKey) {
   console.error("RESEND_API_KEY is required in .env for production Lambda deploy.");
@@ -42,6 +43,7 @@ const parameterOverrides = [
   `AdminEmails=${quote(adminEmails)}`,
   `StaticBucketName=${staticBucket}`,
   `CloudFrontDistributionId=${cloudFrontId}`,
+  `GoogleClientId=${googleClientId}`,
 ].join(" ");
 
 const samDir = path.join(repoRoot, "infra/sam");

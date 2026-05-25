@@ -186,7 +186,8 @@ export async function openSqliteDb(filename) {
     "alter table users add column verification_expires_at text",
     "alter table users add column verification_sent_at text",
     "alter table users add column verification_attempts integer not null default 0",
-    "alter table users add column verification_locked_until text"
+    "alter table users add column verification_locked_until text",
+    "alter table users add column google_sub text"
   ]) {
     try {
       await db.run(col);
