@@ -9,6 +9,22 @@ Parameters:
     Type: String
     Default: /dev
     Description: HTTP API stage prefix with leading slash (e.g. /dev). CloudFront OriginPath.
+  CustomDomainName:
+    Type: String
+    Default: ""
+    Description: Optional custom domain (e.g. shadowingnetwork.com) — requires AcmCertificateArn.
+  WwwDomainName:
+    Type: String
+    Default: ""
+    Description: Optional www alias (e.g. www.shadowingnetwork.com) — same ACM cert as apex.
+  AcmCertificateArn:
+    Type: String
+    Default: ""
+    Description: ACM cert ARN in us-east-1 for CustomDomainName (CloudFront requirement).
+
+Conditions:
+  UseCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
+  UseWwwDomain: !Not [!Equals [!Ref WwwDomainName, ""]]
 
 Resources:
   SiteBucket:
@@ -122,6 +138,19 @@ Resources:
         DefaultRootObject: index.html
         PriceClass: PriceClass_100
         HttpVersion: http2and3
+        Aliases: !If
+          - UseCustomDomain
+          - !If
+            - UseWwwDomain
+            - [!Ref CustomDomainName, !Ref WwwDomainName]
+            - [!Ref CustomDomainName]
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - UseCustomDomain
+          - AcmCertificateArn: !Ref AcmCertificateArn
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
         Origins:
           - Id: S3Site
             DomainName: !GetAtt SiteBucket.RegionalDomainName
