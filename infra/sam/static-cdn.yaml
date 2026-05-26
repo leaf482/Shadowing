@@ -119,6 +119,7 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: Shadowing static + API proxy
+        DefaultRootObject: index.html
         PriceClass: PriceClass_100
         HttpVersion: http2and3
         Origins:
