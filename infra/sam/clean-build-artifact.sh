@@ -44,6 +44,8 @@ rm -rf \
   "$TARGET/node_modules/node-gyp" \
   "$TARGET/node_modules/tar"
 
+rm -rf "$TARGET/node_modules/.bin"
+
 du -sh "$TARGET"
 (cd "$TARGET" && zip -qr /tmp/lambda-size-check.zip .)
 echo -n "zip bytes: "

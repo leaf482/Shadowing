@@ -467,76 +467,6 @@ a { color: var(--accent); }
   margin-top: 0.9rem;
 }
 
-/* Intro marketing map — stylized illustration + pins (IntroMapPreview.jsx), lazy-loaded */
-.intro-map-preview {
-  width: 100%;
-  height: 100%;
-  min-height: 220px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #f4f2ef;
-}
-.intro-map-preview--photo {
-  position: relative;
-}
-.intro-map-preview__basemap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  pointer-events: none;
-}
-.intro-map-preview__attrib {
-  position: absolute;
-  right: 6px;
-  bottom: 4px;
-  z-index: 3;
-  margin: 0;
-  font-size: 9px;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  color: rgba(40, 40, 45, 0.58);
-  text-shadow:
-    0 0 8px rgba(255, 255, 255, 0.95),
-    0 0 2px rgba(255, 255, 255, 1);
-  pointer-events: auto;
-}
-.intro-map-preview__attrib a {
-  color: inherit;
-  text-decoration: none;
-}
-.intro-map-preview__attrib a:hover {
-  text-decoration: underline;
-}
-.intro-map-preview__pins {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-}
-.intro-map-preview__pin {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 2.5px solid rgba(255, 255, 255, 0.96);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.22),
-    0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  pointer-events: auto;
-}
-.intro-map-preview--fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 220px;
-  border-radius: 14px;
-  background: linear-gradient(145deg, #f8fbff 0%, #ebf2ff 100%);
-}
-
 .login {
   min-height: 100vh;
   display: flex;
@@ -575,20 +505,6 @@ a { color: var(--accent); }
   background: #ffffff;
   color: var(--text);
   box-shadow: 0 1px 2px rgba(15,23,42,0.18);
-}
-.login__mode-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0 0 0.55rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #0f766e;
-  background: #ccfbf1;
-  width: fit-content;
 }
 .login--register .login__inner {
   border: 1px solid #99f6e4;
@@ -637,34 +553,46 @@ a { color: var(--accent); }
   color: #0f766e;
 }
 .login__error { color: var(--danger); font-size: 0.9rem; margin: 0 0 1rem; }
+.login__success { color: var(--success); font-size: 0.9rem; margin: 0 0 1rem; }
 .login__actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
 .login__actions .button { flex: 1; }
-.login__google {
-  display: flex;
-  justify-content: center;
-  min-height: 44px;
-  margin-bottom: 0.25rem;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.login__google.is-ready { opacity: 1; }
-.login__google-btn { display: flex; justify-content: center; width: 100%; }
 .login__divider {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin: 1rem 0;
+  margin: 1.25rem 0 1rem;
+  color: var(--muted);
   font-size: 0.85rem;
-  text-transform: lowercase;
 }
 .login__divider::before,
 .login__divider::after {
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--border, #e5e7eb);
+  background: var(--border);
 }
-.login__forgot-note { font-size: 0.8rem; }
+.login__google-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  background: #fff;
+  color: #1f2937;
+  border: 1px solid var(--border);
+}
+.login__google-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #cbd5e1;
+}
+.login__google-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.login__google-note {
+  margin-top: 0.65rem;
+  text-align: center;
+}
 
 /* ── Sidebar / Nav ───────────────────────────────────────── */
 .nav {
@@ -1014,6 +942,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   white-space: nowrap;
   display: inline-block;
 }
+.status-pill--pending      { background: rgba(59,130,246,0.12); color: #2563eb; }
 .status-pill--available    { background: var(--success-bg); color: var(--success); }
 .status-pill--mixed        { background: var(--warning-bg); color: var(--warning); }
 .status-pill--unavailable  { background: var(--danger-bg); color: var(--danger); }
@@ -1443,24 +1372,8 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 .guide-callout strong { font-weight: 700; }
 
 /* ── Clinic Directory ────────────────────────────────────── */
-.directory { display: flex; flex-direction: column; gap: 1rem; }
-.directory__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 1rem;
-}
 
 /* Filter bar */
-.filters-bar {
-  display: grid;
-  grid-template-columns: 1.8fr 1fr 1fr 1fr 0.8fr auto;
-  gap: 0.75rem;
-  align-items: end;
-}
-.filters-bar label { font-size: 0.8rem; }
-
-/* Clinic table */
 .clinic-table { display: flex; flex-direction: column; }
 .clinic-table__header {
   display: grid;
@@ -1520,56 +1433,8 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
   border-radius: 999px;
 }
 
-/* ── Legacy directory classes (for compatibility) ────────── */
-.directory__filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.75rem;
-  align-items: end;
-}
-.directory__secondary-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-}
-.directory__checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-.directory__checkbox input { margin: 0; }
-.directory__summary { padding-bottom: 0.35rem; }
-.directory__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 0.85rem;
-}
-.directory__card {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-}
-.directory__card-status {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-
 /* ── Info panel / Map ────────────────────────────────────── */
-.grid {
-  display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(250px, 320px);
-  gap: 1.25rem;
-  align-items: start;
-}
 .panel { display: flex; }
-.panel--left, .panel--right { flex-direction: column; }
 .panel--map { flex-direction: column; min-height: 640px; }
 .sidebar, .info-panel { display: flex; flex-direction: column; gap: 1rem; }
 
@@ -2229,7 +2094,6 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
 @media (max-width: 1200px) {
   .layout { grid-template-columns: 1fr; }
   .nav { flex-direction: row; align-items: center; justify-content: space-between; }
-  .grid { grid-template-columns: 1fr; }
   .panel--map { min-height: 500px; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-grid {

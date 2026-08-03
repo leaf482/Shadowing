@@ -1,20 +1,8 @@
 import { useState, useEffect } from "react";
 import { PRIMARY_SPECIALTIES } from "../data/specialties.js";
-import { authFetch } from "../lib/auth.js";
-import { formatApiErrorMessage } from "../lib/auth.js";
+import { authFetch, formatApiErrorMessage } from "../lib/auth.js";
+import { formatLockExpires, isLocked } from "../lib/clinicLocks.js";
 import ClinicForm from "./ClinicForm.jsx";
-
-function isLocked(clinic) {
-  if (!clinic?.lockExpiresAt) return false;
-  return new Date(clinic.lockExpiresAt) > new Date();
-}
-
-function formatLockExpires(lockExpiresAt) {
-  if (!lockExpiresAt) return "";
-  return new Date(lockExpiresAt).toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric"
-  });
-}
 
 export default function ClinicTrackerPanel({ clinic, statusLabels, onRefreshClinics }) {
   const [hoursSummary, setHoursSummary] = useState(null);

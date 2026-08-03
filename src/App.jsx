@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { MAP_CENTER } from "./data/clinics.js";
 import { PRIMARY_SPECIALTY_FILTER_OPTIONS, SECONDARY_FILTERS } from "./data/specialties.js";
-import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer, formatApiErrorMessage } from "./lib/auth.js";
+import { isAuthenticated, clearSession, getStoredEmail, authFetch, restoreSessionFromServer, formatApiErrorMessage, readAdminModePreference, ADMIN_MODE_KEY, initCognitoAuth, setAuthNotice } from "./lib/auth.js";
 import { fetchClinicDataset } from "./lib/clinicDataset.js";
 import SideNav from "./components/SideNav.jsx";
 import HubPanel from "./components/HubPanel.jsx";
@@ -29,7 +29,6 @@ const CENTER_FALLBACK = {
 };
 
 const MAIN_PAGES = ["dashboard", "tracker", "clinics", "guidelines"];
-const ADMIN_MODE_KEY = "shadowing_admin_mode";
 
 function parseHash() {
   const raw = window.location.hash.replace("#", "").toLowerCase();
@@ -51,21 +50,23 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    restoreSessionFromServer().then((session) => {
+    (async () => {
+      const { ok, config } = await initCognitoAuth();
+      if (ok && config?.cognito?.oauth?.enabled) {
+        const { tryCompleteOAuthSignIn } = await import("./lib/cognitoOAuth.js");
+        const oauthResult = await tryCompleteOAuthSignIn(config.cognito);
+        if (oauthResult && !oauthResult.ok && oauthResult.error) {
+          setAuthNotice(oauthResult.error);
+        }
+      }
+
+      const session = await restoreSessionFromServer();
       if (!active) return;
       setAuthenticated(session.authenticated);
       setIsAdmin(!!session.isAdmin);
-      if (session.isAdmin) {
-        try {
-          setAdminMode(localStorage.getItem(ADMIN_MODE_KEY) === "true");
-        } catch {
-          setAdminMode(false);
-        }
-      } else {
-        setAdminMode(false);
-      }
+      setAdminMode(readAdminModePreference(!!session.isAdmin));
       setAuthReady(true);
-    });
+    })();
     return () => {
       active = false;
     };
@@ -106,10 +107,14 @@ export default function App() {
   };
 
   const handleLoginSuccess = async () => {
-    setAuthenticated(true);
     const session = await restoreSessionFromServer();
+    if (!session.authenticated) {
+      setAuthenticated(false);
+      return;
+    }
+    setAuthenticated(true);
     setIsAdmin(!!session.isAdmin);
-    setAdminMode(false);
+    setAdminMode(readAdminModePreference(!!session.isAdmin));
     window.location.hash = "dashboard";
   };
 
@@ -190,7 +195,13 @@ export default function App() {
 
   if (!authenticated) {
     if (!authReady) {
-      return null;
+      return (
+        <div className="login">
+          <div className="login__inner card">
+            <p className="muted">Loading…</p>
+          </div>
+        </div>
+      );
     }
     if (activePage === "login") {
       return (
@@ -213,7 +224,6 @@ export default function App() {
         onNavigate={handleNavigate}
         onBrandClick={() => {
           window.location.hash = "dashboard";
-          window.location.reload();
         }}
         userEmail={getStoredEmail()}
         isAdmin={isAdmin}

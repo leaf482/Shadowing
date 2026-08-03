@@ -7,7 +7,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../..");
 const envPath = path.join(repoRoot, ".env");
 
 if (!fs.existsSync(envPath)) {
-  console.error(`Missing ${envPath} — copy .env.example and set RESEND_API_KEY, ADMIN_EMAILS, etc.`);
+  console.error(`Missing ${envPath} — copy .env.example and set ADMIN_EMAILS, etc.`);
   process.exit(1);
 }
 
@@ -22,28 +22,25 @@ const env = Object.fromEntries(
     })
 );
 
-const resendKey = env.RESEND_API_KEY || "";
-const fromEmail = env.FROM_EMAIL || "Shadow Network <noreply@shadowingnetwork.com>";
 const adminEmails = env.ADMIN_EMAILS || "";
 const staticBucket =
   env.STATIC_BUCKET || env.STATIC_BUCKET_NAME || "shadowing-static-dev-sitebucket-xnygmxwbe67z";
 const cloudFrontId = env.CLOUDFRONT_DISTRIBUTION_ID || env.CF_DISTRIBUTION_ID || "E2XKSS6CLI091Q";
-const googleClientId = env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID || "";
-
-if (!resendKey) {
-  console.error("RESEND_API_KEY is required in .env for production Lambda deploy.");
-  process.exit(1);
-}
+const googleClientId =
+  env.GOOGLE_CLIENT_ID ||
+  "323836536700-3oo4vsourp842uaoigppq3r4himavbsm.apps.googleusercontent.com";
+const googleClientSecret = env.GOOGLE_CLIENT_SECRET || "";
+const cognitoDomainPrefix = env.COGNITO_DOMAIN_PREFIX || "shadowing-network";
 
 const quote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
 const parameterOverrides = [
-  `ResendApiKey=${resendKey}`,
-  `FromEmail=${quote(fromEmail)}`,
   `AdminEmails=${quote(adminEmails)}`,
   `StaticBucketName=${staticBucket}`,
   `CloudFrontDistributionId=${cloudFrontId}`,
-  `GoogleClientId=${googleClientId}`,
+  `GoogleClientId=${quote(googleClientId)}`,
+  `GoogleClientSecret=${quote(googleClientSecret)}`,
+  `CognitoDomainPrefix=${cognitoDomainPrefix}`,
 ].join(" ");
 
 const samDir = path.join(repoRoot, "infra/sam");
@@ -135,5 +132,14 @@ const envUpdate = spawnSync("bash", [path.join(samDir, "update-lambda-env.sh")],
   stdio: "inherit",
 });
 if (envUpdate.status !== 0) process.exit(envUpdate.status ?? 1);
+
+for (const script of ["apply-cognito-ses-policy.sh", "request-ses-production-access.sh"]) {
+  const scriptPath = path.join(repoRoot, "scripts", script);
+  if (!fs.existsSync(scriptPath)) continue;
+  const run = spawnSync("bash", [scriptPath], { cwd: repoRoot, stdio: "inherit", env: process.env });
+  if (run.status !== 0) {
+    console.warn(`${script} exited with ${run.status} — continue if already applied`);
+  }
+}
 
 process.exit(0);

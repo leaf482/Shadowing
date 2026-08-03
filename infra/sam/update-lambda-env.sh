@@ -17,6 +17,23 @@ with open("/tmp/lambda-env.json") as f:
 v["STATIC_BUCKET"] = "shadowing-static-dev-sitebucket-xnygmxwbe67z"
 v["CLOUDFRONT_DISTRIBUTION_ID"] = "E2XKSS6CLI091Q"
 
+stack = os.popen(
+    "aws cloudformation describe-stacks --region us-west-2 --stack-name shadowing-api-dev "
+    "--query \"Stacks[0].Outputs\" --output json 2>/dev/null"
+).read()
+if stack.strip():
+    try:
+        outputs = {o["OutputKey"]: o["OutputValue"] for o in json.loads(stack)}
+        if outputs.get("CognitoUserPoolId"):
+            v["COGNITO_USER_POOL_ID"] = outputs["CognitoUserPoolId"]
+        if outputs.get("CognitoUserPoolClientId"):
+            v["COGNITO_CLIENT_ID"] = outputs["CognitoUserPoolClientId"]
+        if outputs.get("CognitoOAuthDomain"):
+            v["COGNITO_OAUTH_DOMAIN"] = outputs["CognitoOAuthDomain"]
+            v["COGNITO_GOOGLE_ENABLED"] = "true"
+    except Exception:
+        pass
+
 repo_env = os.environ.get("REPO_ENV", "")
 if repo_env and os.path.isfile(repo_env):
     with open(repo_env) as f:
@@ -25,11 +42,11 @@ if repo_env and os.path.isfile(repo_env):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, val = line.split("=", 1)
-            if key in ("GOOGLE_CLIENT_ID", "VITE_GOOGLE_CLIENT_ID") and val.strip():
-                v["GOOGLE_CLIENT_ID"] = val.strip()
+            if key == "ADMIN_EMAILS" and val.strip():
+                v["ADMIN_EMAILS"] = val.strip()
 
 with open("/tmp/lambda-env-out.json", "w") as f:
     json.dump({"Variables": v}, f)
 PY
 
-aws lambda update-function-configuration --region "$REGION" --function-name "$FN" --environment file:///tmp/lambda-env-out.json --query 'Environment.Variables.{STATIC:STATIC_BUCKET,CF:CLOUDFRONT_DISTRIBUTION_ID,GOOGLE:GOOGLE_CLIENT_ID}' --output json
+aws lambda update-function-configuration --region "$REGION" --function-name "$FN" --environment file:///tmp/lambda-env-out.json --query 'Environment.Variables.{STATIC:STATIC_BUCKET,CF:CLOUDFRONT_DISTRIBUTION_ID,COGNITO:COGNITO_USER_POOL_ID}' --output json

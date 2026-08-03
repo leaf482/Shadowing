@@ -135,9 +135,9 @@ Notes:
 
 ## Operations: where the API runs
 
-- **VM + Caddy**: Node should bind loopback (see `server/index.js`); use **PM2 + `npm start`** so `instrument.mjs` runs (optional Sentry on the server).
-- **AWS Lambda**: Deploy `infra/sam/template.yaml` — runtime **Node.js 24.x**, handler `lambda-handler.mjs` (loads `instrument.mjs`).
-- **Static CDN**: `npm run deploy:static` uploads `dist/`; CSP from Express/Lambda does **not** apply to HTML served only from S3 unless you add equivalent headers in CloudFront.
+- **Production:** CloudFront + S3 (SPA) + Lambda HTTP API (`infra/sam/template.yaml`, Node.js 24.x, `lambda-handler.mjs`). Domain traffic must **not** terminate on EC2.
+- **EC2 (optional tooling):** start only for SSH / AWS CLI / deploy helpers, then stop. Do **not** enable Caddy auto-HTTPS for `shadowingnetwork.com` on this host (DNS is CloudFront; cert renewals fail). Local Node on the VM can still bind loopback for debugging.
+- **Static CDN:** `npm run deploy:static` uploads `dist/`; CSP from Express/Lambda does **not** apply to HTML served only from S3 unless you add equivalent headers in CloudFront.
 
 **Ubuntu note:** switching from distro Node 18 to NodeSource 20+ may **remove many `node-*` apt packages**. Reinstall anything you still need (`npm install -g …` or apt).
 

@@ -1,171 +1,137 @@
 import { useEffect, useState } from "react";
-import { isUWEmail, setSession, consumeAuthNotice } from "../lib/auth.js";
-import GoogleSignInButton from "./GoogleSignInButton.jsx";
+import {
+  consumeAuthNotice,
+  initCognitoAuth,
+  isEduEmail,
+  signInWithPassword,
+} from "../lib/auth.js";
+import {
+  cognitoConfirmPassword,
+  cognitoConfirmSignUp,
+  cognitoErrorMessage,
+  cognitoForgotPassword,
+  cognitoResendSignUpCode,
+  cognitoSignUp,
+} from "../lib/cognitoClient.js";
+import { useResendCooldown } from "../hooks/useResendCooldown.js";
+import { getPasswordChecks, isPasswordValid } from "../lib/passwordRules.js";
+import LoginShell from "./auth/LoginShell.jsx";
+import PasswordChecklist from "./auth/PasswordChecklist.jsx";
+import GoogleSignInButton from "./auth/GoogleSignInButton.jsx";
+
+const EDU_EMAIL_ERROR = "Only .edu email addresses are allowed (e.g. yourname@uw.edu, yourname@plu.edu).";
 
 export default function LoginPage({ onSuccess, onBack }) {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [ready, setReady] = useState(false);
+  const [cognitoConfig, setCognitoConfig] = useState(null);
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState("credentials"); // "credentials" | "verify" | "forgot_request" | "forgot_reset"
+  const [step, setStep] = useState("credentials");
   const [pendingEmail, setPendingEmail] = useState("");
+  const [pendingPassword, setPendingPassword] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
-  const [resendCooldown, setResendCooldown] = useState(false);
-  const [resendTimerId, setResendTimerId] = useState(null);
   const [resetEmail, setResetEmail] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [resetResendCooldown, setResetResendCooldown] = useState(false);
-  const [resetResendTimerId, setResetResendTimerId] = useState(null);
-  const [googleSignInEnabled, setGoogleSignInEnabled] = useState(false);
+  const verifyResend = useResendCooldown();
+  const resetResend = useResendCooldown();
+
+  useEffect(() => {
+    initCognitoAuth().then(({ ok, config }) => {
+      if (!ok) setError("Sign-in is not configured. Please try again later.");
+      else setCognitoConfig(config?.cognito || null);
+      setReady(true);
+    });
+  }, []);
 
   useEffect(() => {
     const notice = consumeAuthNotice();
     if (notice) setError(notice);
   }, []);
 
-  useEffect(() => () => {
-    if (resendTimerId) clearTimeout(resendTimerId);
-    if (resetResendTimerId) clearTimeout(resetResendTimerId);
-  }, [resendTimerId, resetResendTimerId]);
+  const passwordChecks = getPasswordChecks(password);
+  const resetPasswordChecks = getPasswordChecks(newPassword);
 
-  const startResendCooldown = (seconds) => {
-    setResendCooldown(true);
-    if (resendTimerId) clearTimeout(resendTimerId);
-    const timerId = setTimeout(() => {
-      setResendCooldown(false);
-      setResendTimerId(null);
-    }, Math.max(1, seconds) * 1000);
-    setResendTimerId(timerId);
+  const completeSignIn = async (trimmedEmail, userPassword) => {
+    await signInWithPassword(trimmedEmail, userPassword);
+    await onSuccess();
   };
 
-  const startResetResendCooldown = (seconds) => {
-    setResetResendCooldown(true);
-    if (resetResendTimerId) clearTimeout(resetResendTimerId);
-    const timerId = setTimeout(() => {
-      setResetResendCooldown(false);
-      setResetResendTimerId(null);
-    }, Math.max(1, seconds) * 1000);
-    setResetResendTimerId(timerId);
+  const goToVerify = (trimmedEmail, userPassword) => {
+    setPendingEmail(trimmedEmail);
+    setPendingPassword(userPassword);
+    setStep("verify");
   };
 
-  const toErrorMessage = (data, fallback) => {
-    const message = data?.error || fallback;
-    if (data?.requestId) return `${message} (Ref: ${data.requestId})`;
-    return message;
-  };
+  const googleSignInEnabled = !!cognitoConfig?.oauth?.enabled;
 
-  const passwordChecks = {
-    minLength: password.length >= 8,
-    hasLetter: /[A-Za-z]/.test(password),
-    hasNumber: /\d/.test(password),
-  };
-
-  const resetPasswordChecks = {
-    minLength: newPassword.length >= 8,
-    hasLetter: /[A-Za-z]/.test(newPassword),
-    hasNumber: /\d/.test(newPassword),
-  };
-
-  const handleGoogleSuccess = (signedInEmail) => {
-    setSession(signedInEmail);
-    onSuccess();
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setSuccess("");
+    setSubmitting(true);
+    try {
+      const { startGoogleSignIn } = await import("../lib/cognitoOAuth.js");
+      await startGoogleSignIn(cognitoConfig);
+    } catch (err) {
+      setError(err?.message || "Could not start Google sign-in.");
+      setSubmitting(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
       setError("Please enter your email address.");
       return;
     }
-    if (!isUWEmail(trimmedEmail)) {
-      setError("Only .edu email addresses are allowed (e.g. yourname@uw.edu, yourname@plu.edu).");
+    if (!isEduEmail(trimmedEmail)) {
+      setError(EDU_EMAIL_ERROR);
       return;
     }
     if (!password || password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
     }
-
-    if (mode === "register") {
-      if (!passwordChecks.hasLetter || !passwordChecks.hasNumber) {
-        setError("Password must include both letters and numbers.");
-        return;
-      }
+    if (mode === "register" && !isPasswordValid(passwordChecks)) {
+      setError("Password must include both letters and numbers.");
+      return;
+    }
+    if (mode === "register" && password !== registerConfirmPassword) {
+      setError("Passwords do not match.");
+      return;
     }
 
     setSubmitting(true);
     try {
       if (mode === "register") {
-        const registerRes = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmedEmail, password }),
-        });
-        const registerData = await registerRes.json().catch(() => ({}));
-        if (!registerRes.ok) {
-          setError(toErrorMessage(registerData, "Could not create account."));
-          setSubmitting(false);
-          return;
-        }
-
-        if (registerData.verificationSent) {
-          setPendingEmail(trimmedEmail);
-          setStep("verify");
-          setSubmitting(false);
-          return;
-        }
-
-        const verificationRes = await fetch("/api/auth/send-verification", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmedEmail }),
-        });
-        if (!verificationRes.ok) {
-          const verificationData = await verificationRes.json().catch(() => ({}));
-          setError(toErrorMessage(verificationData, "Could not send verification code. Please try again."));
-          setSubmitting(false);
-          return;
-        }
-
-        setPendingEmail(trimmedEmail);
-        setStep("verify");
+        await cognitoSignUp(trimmedEmail, password);
+        goToVerify(trimmedEmail, password);
         setSubmitting(false);
         return;
       }
 
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password }),
-      });
-
-      if (res.status === 403) {
-        const data = await res.json();
-        if (data.error === "email_not_verified") {
-          setPendingEmail(data.email || trimmedEmail);
-          setStep("verify");
+      try {
+        await completeSignIn(trimmedEmail, password);
+      } catch (err) {
+        if (err?.code === "UserNotConfirmedException") {
+          goToVerify(trimmedEmail, password);
           setSubmitting(false);
           return;
         }
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(toErrorMessage(data, "Invalid email or password."));
+        setError(cognitoErrorMessage(err, "Invalid email or password."));
         setSubmitting(false);
-        return;
       }
-
-      const data = await res.json();
-      setSession(trimmedEmail);
-      onSuccess();
-    } catch {
-      setError("Could not connect to server. Please try again.");
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Something went wrong. Please try again."));
       setSubmitting(false);
     }
   };
@@ -177,120 +143,76 @@ export default function LoginPage({ onSuccess, onBack }) {
       setError("Please enter the verification code.");
       return;
     }
+    if (!pendingPassword) {
+      setError("Please enter your password again to finish signing in.");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: pendingEmail, code: verifyCode.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(toErrorMessage(data, "Invalid code. Please try again."));
-        setSubmitting(false);
-        return;
-      }
-      setSession(pendingEmail);
-      onSuccess();
-    } catch {
-      setError("Could not connect to server. Please try again.");
+      await cognitoConfirmSignUp(pendingEmail, verifyCode.trim());
+      await completeSignIn(pendingEmail, pendingPassword);
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Invalid code. Please try again."));
       setSubmitting(false);
     }
   };
 
   const handleResend = async () => {
     setError("");
-    startResendCooldown(30);
     try {
-      const res = await fetch("/api/auth/send-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: pendingEmail }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 429) {
-          startResendCooldown(data.retryAfterSeconds || 60);
-        }
-        setError(toErrorMessage(data, "Could not resend code. Please try again."));
-      }
-    } catch {
-      setError("Could not connect to server. Please try again.");
+      await cognitoResendSignUpCode(pendingEmail);
+      verifyResend.start();
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Could not resend code. Please try again."));
     }
   };
 
   const handleForgotRequest = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
     const trimmedEmail = resetEmail.trim().toLowerCase();
     if (!trimmedEmail) {
       setError("Please enter your email address.");
       return;
     }
-    if (!isUWEmail(trimmedEmail)) {
-      setError("Only .edu email addresses are allowed (e.g. yourname@uw.edu, yourname@plu.edu).");
+    if (!isEduEmail(trimmedEmail)) {
+      setError("Only .edu email addresses are allowed.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 429) {
-          startResetResendCooldown(data.retryAfterSeconds || 60);
-        }
-        setError(toErrorMessage(data, "Could not start password reset. Please try again."));
-        setSubmitting(false);
-        return;
-      }
-
+      await cognitoForgotPassword(trimmedEmail);
       setResetEmail(trimmedEmail);
       setStep("forgot_reset");
-      startResetResendCooldown(30);
+      resetResend.start();
       setSubmitting(false);
-    } catch {
-      setError("Could not connect to server. Please try again.");
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Could not start password reset. Please try again."));
       setSubmitting(false);
     }
   };
 
   const handleResendResetCode = async () => {
     setError("");
-    startResetResendCooldown(30);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 429) {
-          startResetResendCooldown(data.retryAfterSeconds || 60);
-        }
-        setError(toErrorMessage(data, "Could not resend reset code. Please try again."));
-      }
-    } catch {
-      setError("Could not connect to server. Please try again.");
+      await cognitoForgotPassword(resetEmail);
+      resetResend.start();
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Could not resend reset code. Please try again."));
     }
   };
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setError("");
-
+    setSuccess("");
     if (!resetCode.trim()) {
       setError("Please enter the reset code.");
       return;
     }
-    if (!resetPasswordChecks.minLength || !resetPasswordChecks.hasLetter || !resetPasswordChecks.hasNumber) {
+    if (!isPasswordValid(resetPasswordChecks)) {
       setError("Password must be at least 8 characters and include letters and numbers.");
       return;
     }
@@ -301,379 +223,145 @@ export default function LoginPage({ onSuccess, onBack }) {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: resetEmail,
-          code: resetCode.trim(),
-          password: newPassword,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setError(toErrorMessage(data, "Could not reset password. Please try again."));
-        setSubmitting(false);
-        return;
-      }
-
+      await cognitoConfirmPassword(resetEmail, resetCode.trim(), newPassword);
       setMode("login");
       setStep("credentials");
       setEmail(resetEmail);
       setPassword("");
+      setRegisterConfirmPassword("");
       setResetCode("");
       setNewPassword("");
       setConfirmPassword("");
-      setError("Password updated. Please sign in with your new password.");
+      setError("");
+      setSuccess("Password updated. Please sign in with your new password.");
       setSubmitting(false);
-    } catch {
-      setError("Could not connect to server. Please try again.");
+    } catch (err) {
+      setError(cognitoErrorMessage(err, "Could not reset password. Please try again."));
       setSubmitting(false);
     }
   };
 
+  if (!ready) {
+    return (
+      <LoginShell>
+        <p className="muted">Loading sign-in…</p>
+      </LoginShell>
+    );
+  }
+
   if (step === "forgot_request") {
     return (
-      <div className="login">
-        <div className="login__inner card">
-          <h1 className="login__title">Reset your password</h1>
-          <p className="login__subtitle muted">
-            Enter your university email address and we will send a reset code via email.
-          </p>
-          <form className="login__form" onSubmit={handleForgotRequest}>
-            <label>
-              Email address
-              <input
-                type="email"
-                autoComplete="email"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                disabled={submitting}
-                className="login__input"
-                autoFocus
-              />
-            </label>
-            {error ? (
-              <p className="login__error" role="alert">{error}</p>
-            ) : null}
-            <div className="login__actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={() => {
-                  setStep("credentials");
-                  setError("");
-                }}
-                disabled={submitting}
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                className="button button--primary"
-                disabled={submitting}
-              >
-                {submitting ? "Sending..." : "Send reset code"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <LoginShell>
+        <h1 className="login__title">Reset your password</h1>
+        <p className="login__subtitle muted">Enter your .edu email and we will send a reset code.</p>
+        <form className="login__form" onSubmit={handleForgotRequest}>
+          <label>
+            Email address
+            <input type="email" autoComplete="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} disabled={submitting} className="login__input" autoFocus />
+          </label>
+          {error ? <p className="login__error" role="alert">{error}</p> : null}
+          <div className="login__actions">
+            <button type="button" className="button button--secondary" onClick={() => { setStep("credentials"); setError(""); }} disabled={submitting}>Back</button>
+            <button type="submit" className="button button--primary" disabled={submitting}>{submitting ? "Sending..." : "Send reset code"}</button>
+          </div>
+        </form>
+      </LoginShell>
     );
   }
 
   if (step === "forgot_reset") {
     return (
-      <div className="login">
-        <div className="login__inner card">
-          <h1 className="login__title">Enter reset code</h1>
-          <p className="login__subtitle muted">
-            We sent a reset code to <strong>{resetEmail}</strong>. Enter it with your new password.
-          </p>
-          <form className="login__form" onSubmit={handleResetPassword}>
-            <label>
-              Reset code
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                autoComplete="one-time-code"
-                value={resetCode}
-                onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
-                disabled={submitting}
-                className="login__input"
-                autoFocus
-              />
-            </label>
-            <label>
-              New password
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                disabled={submitting}
-                className="login__input"
-              />
-            </label>
-            <label>
-              Confirm new password
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={submitting}
-                className="login__input"
-              />
-            </label>
-            <ul className="login__password-checklist" aria-live="polite">
-              <li className={resetPasswordChecks.minLength ? "is-valid" : ""}>
-                <span>{resetPasswordChecks.minLength ? "✓" : "○"}</span>
-                At least 8 characters
-              </li>
-              <li className={resetPasswordChecks.hasLetter ? "is-valid" : ""}>
-                <span>{resetPasswordChecks.hasLetter ? "✓" : "○"}</span>
-                Includes a letter (A-Z)
-              </li>
-              <li className={resetPasswordChecks.hasNumber ? "is-valid" : ""}>
-                <span>{resetPasswordChecks.hasNumber ? "✓" : "○"}</span>
-                Includes a number (0-9)
-              </li>
-            </ul>
-            {error ? (
-              <p className="login__error" role="alert">{error}</p>
-            ) : null}
-            <div className="login__actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={handleResendResetCode}
-                disabled={submitting || resetResendCooldown}
-              >
-                {resetResendCooldown ? "Code sent" : "Resend code"}
-              </button>
-              <button
-                type="submit"
-                className="button button--primary"
-                disabled={submitting}
-              >
-                {submitting ? "Updating..." : "Update password"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <LoginShell>
+        <h1 className="login__title">Enter reset code</h1>
+        <p className="login__subtitle muted">We sent a reset code to <strong>{resetEmail}</strong>.</p>
+        <form className="login__form" onSubmit={handleResetPassword}>
+          <label>Reset code<input type="text" inputMode="numeric" autoComplete="one-time-code" value={resetCode} onChange={(e) => setResetCode(e.target.value.replace(/\s/g, ""))} disabled={submitting} className="login__input" autoFocus /></label>
+          <label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} disabled={submitting} className="login__input" /></label>
+          <label>Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={submitting} className="login__input" /></label>
+          <PasswordChecklist checks={resetPasswordChecks} />
+          {error ? <p className="login__error" role="alert">{error}</p> : null}
+          <div className="login__actions">
+            <button type="button" className="button button--secondary" onClick={() => { setStep("forgot_request"); setError(""); }} disabled={submitting}>Back</button>
+            <button type="button" className="button button--secondary" onClick={handleResendResetCode} disabled={submitting || resetResend.active}>{resetResend.active ? "Code sent" : "Resend code"}</button>
+            <button type="submit" className="button button--primary" disabled={submitting}>{submitting ? "Updating..." : "Update password"}</button>
+          </div>
+        </form>
+      </LoginShell>
     );
   }
 
   if (step === "verify") {
     return (
-      <div className="login">
-        <div className="login__inner card">
-          <h1 className="login__title">Check your email</h1>
-          <p className="login__subtitle muted">
-            We sent a 6-digit verification code to <strong>{pendingEmail}</strong>. Enter it below to continue.
-          </p>
-          <form className="login__form" onSubmit={handleVerify}>
+      <LoginShell>
+        <h1 className="login__title">Check your email</h1>
+        <p className="login__subtitle muted">We sent a verification code to <strong>{pendingEmail}</strong>.</p>
+        <form className="login__form" onSubmit={handleVerify}>
+          <label>Verification code<input type="text" inputMode="numeric" autoComplete="one-time-code" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/\s/g, ""))} disabled={submitting} className="login__input" autoFocus /></label>
+          {!pendingPassword ? (
             <label>
-              Verification code
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                autoComplete="one-time-code"
-                value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
-                disabled={submitting}
-                className="login__input"
-                autoFocus
-              />
+              Password
+              <input type="password" autoComplete="current-password" value={pendingPassword} onChange={(e) => setPendingPassword(e.target.value)} disabled={submitting} className="login__input" />
             </label>
-            {error ? (
-              <p className="login__error" role="alert">{error}</p>
-            ) : null}
-            <div className="login__actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={handleResend}
-                disabled={submitting || resendCooldown}
-              >
-                {resendCooldown ? "Code sent" : "Resend code"}
-              </button>
-              <button
-                type="submit"
-                className="button button--primary"
-                disabled={submitting}
-              >
-                {submitting ? "Verifying…" : "Verify"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+          ) : null}
+          {error ? <p className="login__error" role="alert">{error}</p> : null}
+          <div className="login__actions">
+            <button type="button" className="button button--secondary" onClick={() => { setStep("credentials"); setError(""); }} disabled={submitting}>Back</button>
+            <button type="button" className="button button--secondary" onClick={handleResend} disabled={submitting || verifyResend.active}>{verifyResend.active ? "Code sent" : "Resend code"}</button>
+            <button type="submit" className="button button--primary" disabled={submitting}>{submitting ? "Verifying…" : "Verify"}</button>
+          </div>
+        </form>
+      </LoginShell>
     );
   }
 
   return (
-    <div className={`login ${mode === "register" ? "login--register" : ""}`}>
-      <div className="login__inner card">
-        <div className="login__mode-switch" role="tablist" aria-label="Auth mode">
-          <button
-            type="button"
-            className={mode === "login" ? "login__mode-btn is-active" : "login__mode-btn"}
-            onClick={() => {
-              setMode("login");
-              setError("");
-            }}
-            disabled={submitting}
-            aria-selected={mode === "login"}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            className={mode === "register" ? "login__mode-btn is-active" : "login__mode-btn"}
-            onClick={() => {
-              setMode("register");
-              setError("");
-            }}
-            disabled={submitting}
-            aria-selected={mode === "register"}
-          >
-            Create account
-          </button>
-        </div>
-
-        {mode === "register" && (
-          <p className="login__mode-badge" aria-live="polite">New account</p>
-        )}
-
-        <h1 className="login__title">{mode === "login" ? "Sign in" : "Create account"}</h1>
-        <p className="login__subtitle muted">
-          {mode === "login"
-            ? "Use your .edu Google account or email and password."
-            : "Sign up with Google or your .edu email. Email sign-up sends a verification code."}
-        </p>
-
-        <GoogleSignInButton
-          disabled={submitting}
-          onSuccess={handleGoogleSuccess}
-          onError={setError}
-          onAvailable={setGoogleSignInEnabled}
-        />
-
-        {googleSignInEnabled ? (
-          <p className="login__divider muted" aria-hidden="true">
-            <span>or</span>
-          </p>
-        ) : null}
-
-        <form className="login__form" onSubmit={handleSubmit}>
-          <label>
-            Email address
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder=""
-              disabled={submitting}
-              className="login__input"
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={submitting}
-              className="login__input"
-            />
-          </label>
-          {mode === "login" && (
-            <p className="muted small" style={{ margin: "-0.2rem 0 0.4rem", textAlign: "right" }}>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  setResetEmail(email.trim().toLowerCase());
-                  setResetCode("");
-                  setNewPassword("");
-                  setConfirmPassword("");
-                  setStep("forgot_request");
-                  setError("");
-                }}
-                disabled={submitting}
-              >
-                Forgot password?
-              </button>
-              <span className="login__forgot-note"> (email accounts only)</span>
-            </p>
-          )}
-          {mode === "register" && (
-            <ul className="login__password-checklist" aria-live="polite">
-              <li className={passwordChecks.minLength ? "is-valid" : ""}>
-                <span>{passwordChecks.minLength ? "✓" : "○"}</span>
-                At least 8 characters
-              </li>
-              <li className={passwordChecks.hasLetter ? "is-valid" : ""}>
-                <span>{passwordChecks.hasLetter ? "✓" : "○"}</span>
-                Includes a letter (A-Z)
-              </li>
-              <li className={passwordChecks.hasNumber ? "is-valid" : ""}>
-                <span>{passwordChecks.hasNumber ? "✓" : "○"}</span>
-                Includes a number (0-9)
-              </li>
-            </ul>
-          )}
-          {error ? (
-            <p className="login__error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <div className="login__actions">
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onBack}
-              disabled={submitting}
-            >
-              Back
-            </button>
-            <button
-              type="submit"
-              className="button button--primary"
-              disabled={submitting}
-            >
-              {submitting
-                ? mode === "login" ? "Signing in..." : "Creating account..."
-                : mode === "login" ? "Sign in" : "Create account"}
-            </button>
-          </div>
-        </form>
-
-        <p className="muted small" style={{ marginTop: "0.9rem", textAlign: "center" }}>
-          {mode === "login" ? "Need an account? " : "Already have an account? "}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              setMode((prev) => (prev === "login" ? "register" : "login"));
-              setError("");
-            }}
-            disabled={submitting}
-          >
-            {mode === "login" ? "Create one" : "Sign in"}
-          </button>
-        </p>
+    <LoginShell className={mode === "register" ? "login--register" : ""}>
+      <div className="login__mode-switch" role="tablist" aria-label="Auth mode">
+        <button type="button" className={mode === "login" ? "login__mode-btn is-active" : "login__mode-btn"} onClick={() => { setMode("login"); setRegisterConfirmPassword(""); setError(""); setSuccess(""); }} disabled={submitting} aria-selected={mode === "login"}>Sign in</button>
+        <button type="button" className={mode === "register" ? "login__mode-btn is-active" : "login__mode-btn"} onClick={() => { setMode("register"); setError(""); setSuccess(""); }} disabled={submitting} aria-selected={mode === "register"}>Create account</button>
       </div>
-    </div>
+      <h1 className="login__title">{mode === "login" ? "Sign in" : "Create account"}</h1>
+      <p className="login__subtitle muted">
+        {mode === "login"
+          ? "Sign in with your .edu email and password, or use your university Google account."
+          : "Create an account with your .edu email. We will send a verification code, or use Google with a .edu account."}
+      </p>
+      <form className="login__form" onSubmit={handleSubmit}>
+        <label>Email address<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={submitting} className="login__input" /></label>
+        <label>Password<input type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} disabled={submitting} className="login__input" /></label>
+        {mode === "register" && (
+          <label>Confirm password<input type="password" autoComplete="new-password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} disabled={submitting} className="login__input" /></label>
+        )}
+        {mode === "login" && (
+          <p className="muted small" style={{ margin: "-0.2rem 0 0.4rem", textAlign: "right" }}>
+            <button type="button" className="text-button" onClick={() => {
+              setResetEmail(email.trim().toLowerCase());
+              setResetCode("");
+              setNewPassword("");
+              setConfirmPassword("");
+              setStep("forgot_request");
+              setError("");
+              setSuccess("");
+            }} disabled={submitting}>Forgot password?</button>
+          </p>
+        )}
+        {mode === "register" && <PasswordChecklist checks={passwordChecks} />}
+        {success ? <p className="login__success" role="status">{success}</p> : null}
+        {error ? <p className="login__error" role="alert">{error}</p> : null}
+        <div className="login__actions">
+          <button type="button" className="button button--secondary" onClick={onBack} disabled={submitting}>Back</button>
+          <button type="submit" className="button button--primary" disabled={submitting}>{submitting ? (mode === "login" ? "Signing in..." : "Creating account...") : (mode === "login" ? "Sign in" : "Create account")}</button>
+        </div>
+      </form>
+      {googleSignInEnabled ? (
+        <>
+          <div className="login__divider" role="separator">
+            <span>or</span>
+          </div>
+          <GoogleSignInButton disabled={submitting} onClick={handleGoogleSignIn} />
+          <p className="muted small login__google-note">Only university .edu Google accounts are allowed.</p>
+        </>
+      ) : null}
+    </LoginShell>
   );
 }

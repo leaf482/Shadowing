@@ -29,6 +29,19 @@ test("api includes x-request-id header", async (t) => {
   assert.ok(res.headers.get("x-request-id"));
 });
 
+test("auth config exposes cognito or legacy mode", async (t) => {
+  if (!(await requireServerOrSkip(t))) return;
+
+  const res = await fetch(`${BASE_URL}/api/auth/config`);
+  assert.equal(res.ok, true);
+  const body = await res.json();
+  assert.ok(body.authMode === "cognito" || body.authMode === "legacy");
+  if (body.authMode === "cognito") {
+    assert.ok(body.cognito?.userPoolId);
+    assert.ok(body.cognito?.clientId);
+  }
+});
+
 test("unauthenticated session endpoint returns requestId", async (t) => {
   if (!(await requireServerOrSkip(t))) return;
 
@@ -40,8 +53,15 @@ test("unauthenticated session endpoint returns requestId", async (t) => {
   assert.ok(body.requestId);
 });
 
-test("login failure paths include requestId", async (t) => {
+test("legacy register/login flow when Cognito is disabled", async (t) => {
   if (!(await requireServerOrSkip(t))) return;
+
+  const configRes = await fetch(`${BASE_URL}/api/auth/config`);
+  const config = await configRes.json();
+  if (config.authMode === "cognito") {
+    t.skip("Legacy auth routes disabled — Cognito is enabled");
+    return;
+  }
 
   const email = `smoke-${Date.now()}@example.edu`;
   const password = "smoke-pass-123";

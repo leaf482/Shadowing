@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import ProjectForm from "./ProjectForm.jsx";
 import SessionForm from "./SessionForm.jsx";
 import ExperienceForm from "./ExperienceForm.jsx";
-import { getStoredEmail, authFetch, formatApiErrorMessage } from "../lib/auth.js";
+import { authFetch, formatApiErrorMessage } from "../lib/auth.js";
 
 const EXPERIENCE_TYPE_LABELS = {
   dental_shadowing_in_person: "Dental Shadowing (In-Person)",

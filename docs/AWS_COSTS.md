@@ -20,15 +20,15 @@ The SAM API stack and optional static CDN are tuned for **pay-per-use**: no RDS,
 3. **Elastic IP attached to stopped EC2** — still billed; release EIPs or delete stopped instances you don’t need.
 4. **CloudWatch Logs with no retention** — infinite storage adds up; API stack sets retention on the function log group.
 
-If you still run **EC2 + Caddy** for production, that instance has an **always-on** cost. To align with “no always-on servers”, **stop or terminate EC2** once you’re happy serving from **CloudFront + Lambda**, or only start EC2 when developing.
+**EC2 is tooling-only** (SSH, AWS CLI, static sync / SAM helpers). It must **not** serve `shadowingnetwork.com` — that domain points at CloudFront. Keep the instance **stopped** when idle; start it only for status checks or deploys. Do **not** run Caddy with automatic HTTPS for the public domain on this host (expired certs + DNS at CloudFront cause renew loops and log noise).
 
 ## Production cutover (this project)
 
-- **App (CloudFront + S3 + Lambda API):** open **`https://d2z5wraie5zbrx.cloudfront.net`** (hash routes: `#dashboard`, `#login`, etc.).
+- **App (CloudFront + S3 + Lambda API):** **`https://shadowingnetwork.com`** (and CloudFront URL **`https://d2z5wraie5zbrx.cloudfront.net`**; hash routes: `#dashboard`, `#login`, etc.).
 - **S3 bucket for uploads:** `shadowing-static-dev-sitebucket-xnygmxwbe67z` — set `STATIC_BUCKET` to this when running `npm run deploy:static`.
-- **EC2:** the previous app VM (`i-07c5882bf5836923d`) was **stopped** to avoid hourly compute charges. Start it again from the AWS console only when you need SSH/Caddy or legacy paths.
-- **Elastic IP:** if this instance had an EIP attached while stopped, AWS can still bill — **release or reassociate** the EIP if you see unexpected charges.
-- **Custom domain:** point DNS (CNAME) at the CloudFront domain **`d2z5wraie5zbrx.cloudfront.net`** (or attach a certificate + alternate domain on the distribution later).
+- **EC2:** tooling VM only — stop when idle. Public IP may change on stop/start unless an Elastic IP is attached; prefer starting on demand over always-on.
+- **Elastic IP:** an EIP attached to a **stopped** instance is still billed — release it if you do not need a fixed IP.
+- **Custom domain:** apex/www should resolve to CloudFront (not the EC2 public IP).
 
 ## Optional static CDN (recommended for near-zero idle)
 
@@ -56,8 +56,8 @@ If you still run **EC2 + Caddy** for production, that instance has an **always-o
 ## Free tiers / pricing references (verify current AWS pricing)
 
 - **CloudFront**: includes a monthly free data transfer allowance (check current docs).
-- **SES**: often cheaper at scale than some SaaS providers; you currently use **Resend** — migrating is optional.
-- **Cognito**: generous free tier if you ever replace custom auth (not required for cost alone).
+- **SES**: Cognito sends verification/reset mail via SES (sandbox limits apply until production access).
+- **Cognito**: MAU free tier is usually enough at this scale (verify current AWS pricing).
 
 ## Frontend bundle & bandwidth
 

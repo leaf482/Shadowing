@@ -12,6 +12,7 @@ import {
   getStoredHomeZip,
   HOME_ZIP_CHANGED_EVENT
 } from "../lib/welcomeGate.js";
+import { isLocked } from "../lib/clinicLocks.js";
 
 const STATUS_COLORS = {
   available: "#2ecc71",
@@ -22,11 +23,6 @@ const STATUS_COLORS = {
 };
 
 const ZIP_FRAME_ZOOM = 11;
-
-function isLocked(clinic) {
-  if (!clinic?.lockExpiresAt) return false;
-  return new Date(clinic.lockExpiresAt) > new Date();
-}
 
 function getMarkerColor(clinic) {
   if (clinic.shadowingStatus === "available" && isLocked(clinic)) {

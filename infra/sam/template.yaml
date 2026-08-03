@@ -18,19 +18,6 @@ Parameters:
     Type: String
     Default: ""
     Description: Comma-separated admin emails for ADMIN_EMAILS (optional).
-  ResendApiKey:
-    Type: String
-    Default: ""
-    NoEcho: true
-    Description: Resend API key used for verification and password reset emails.
-  FromEmail:
-    Type: String
-    Default: "Shadow Network <noreply@shadowingnetwork.com>"
-    Description: Verified sender identity for auth emails.
-  GoogleClientId:
-    Type: String
-    Default: ""
-    Description: Google OAuth Web client ID for Sign in with Google (.edu accounts).
   StaticBucketName:
     Type: String
     Default: "shadowing-static-dev-sitebucket-xnygmxwbe67z"
@@ -45,6 +32,35 @@ Parameters:
     Description: Lambda memory (MB); lower = cheaper per ms — raise if cold starts OOM.
     MinValue: 128
     MaxValue: 3008
+  SesDomain:
+    Type: String
+    Default: shadowingnetwork.com
+    Description: Domain verified in Amazon SES for Cognito auth emails.
+  SesFromAddress:
+    Type: String
+    Default: "Shadow Network <noreply@shadowingnetwork.com>"
+    Description: From header for Cognito verification and password reset emails.
+  Route53HostedZoneId:
+    Type: String
+    Default: Z055081139LW49BAPTZGK
+    Description: Route 53 hosted zone for SesDomain (DKIM + MAIL FROM records).
+  GoogleClientId:
+    Type: String
+    Default: "323836536700-3oo4vsourp842uaoigppq3r4himavbsm.apps.googleusercontent.com"
+    Description: Google OAuth client ID for Cognito federated sign-in.
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Google OAuth client secret (required to enable Sign in with Google).
+  CognitoDomainPrefix:
+    Type: String
+    Default: shadowing-network
+    Description: Cognito hosted UI / OAuth domain prefix ({prefix}.auth.{region}.amazoncognito.com).
+
+Conditions:
+  HasGoogleOAuth: !Not [!Equals [!Ref GoogleClientSecret, ""]]
+
 Resources:
   ClinicsTable:
     Type: AWS::DynamoDB::Table
@@ -206,6 +222,192 @@ Resources:
         - AttributeName: id
           KeyType: HASH
 
+  CognitoPreSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: cognito-triggers/
+      Handler: preSignUp.handler
+      Runtime: nodejs24.x
+      MemorySize: 128
+      Timeout: 10
+
+  CognitoPreSignUpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CognitoPreSignUpFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  SesEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref SesDomain
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      DkimAttributes:
+        SigningEnabled: true
+      MailFromAttributes:
+        MailFromDomain: !Sub "mail.${SesDomain}"
+        BehaviorOnMxFailure: USE_DEFAULT_VALUE
+
+  SesDkimRecord1:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !GetAtt SesEmailIdentity.DkimDNSTokenName1
+      Type: CNAME
+      TTL: 1800
+      ResourceRecords:
+        - !GetAtt SesEmailIdentity.DkimDNSTokenValue1
+
+  SesDkimRecord2:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !GetAtt SesEmailIdentity.DkimDNSTokenName2
+      Type: CNAME
+      TTL: 1800
+      ResourceRecords:
+        - !GetAtt SesEmailIdentity.DkimDNSTokenValue2
+
+  SesDkimRecord3:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !GetAtt SesEmailIdentity.DkimDNSTokenName3
+      Type: CNAME
+      TTL: 1800
+      ResourceRecords:
+        - !GetAtt SesEmailIdentity.DkimDNSTokenValue3
+
+  SesMailFromMx:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Sub "mail.${SesDomain}."
+      Type: MX
+      TTL: 3600
+      ResourceRecords:
+        - !Sub "10 feedback-smtp.${AWS::Region}.amazonses.com"
+
+  SesMailFromSpf:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      Name: !Sub "mail.${SesDomain}."
+      Type: TXT
+      TTL: 3600
+      ResourceRecords:
+        - '"v=spf1 include:amazonses.com ~all"'
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DependsOn:
+      - SesEmailIdentity
+    Properties:
+      UserPoolName: !Sub "shadowing-users-${Stage}"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      LambdaConfig:
+        PreSignUp: !GetAtt CognitoPreSignUpFunction.Arn
+      EmailConfiguration:
+        EmailSendingAccount: DEVELOPER
+        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesDomain}"
+        From: !Ref SesFromAddress
+        ReplyToEmailAddress: noreply@shadowingnetwork.com
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: domain
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Condition: HasGoogleOAuth
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogleOAuth
+    Properties:
+      ProviderName: Google
+      ProviderType: Google
+      UserPoolId: !Ref UserPool
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "profile email openid"
+      AttributeMapping:
+        email: email
+        name: name
+        username: sub
+        custom:domain: hd
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: !If
+      - HasGoogleOAuth
+      - - UserPool
+        - GoogleIdentityProvider
+      - - UserPool
+    Properties:
+      ClientName: !Sub "shadowing-spa-${Stage}"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders: !If
+        - HasGoogleOAuth
+        - - COGNITO
+          - Google
+        - - COGNITO
+      AllowedOAuthFlowsUserPoolClient: !If [HasGoogleOAuth, true, false]
+      AllowedOAuthFlows: !If
+        - HasGoogleOAuth
+        - - code
+        - !Ref AWS::NoValue
+      AllowedOAuthScopes: !If
+        - HasGoogleOAuth
+        - - openid
+          - email
+          - profile
+        - !Ref AWS::NoValue
+      CallbackURLs: !If
+        - HasGoogleOAuth
+        - - https://shadowingnetwork.com/
+          - https://www.shadowingnetwork.com/
+          - http://localhost:5173/
+        - !Ref AWS::NoValue
+      LogoutURLs: !If
+        - HasGoogleOAuth
+        - - https://shadowingnetwork.com/
+          - https://www.shadowingnetwork.com/
+          - http://localhost:5173/
+        - !Ref AWS::NoValue
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -241,6 +443,10 @@ Resources:
               Action:
                 - cloudfront:CreateInvalidation
               Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}"
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: !GetAtt UserPool.Arn
       Environment:
         Variables:
           NODE_ENV: production
@@ -258,9 +464,10 @@ Resources:
           TABLE_QUALITY_FLAGS: !Ref QualityFlagsTable
           TABLE_RATE_LIMITS: !Ref RateLimitsTable
           ADMIN_EMAILS: !Ref AdminEmails
-          RESEND_API_KEY: !Ref ResendApiKey
-          FROM_EMAIL: !Ref FromEmail
-          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          COGNITO_USER_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_OAUTH_DOMAIN: !If [HasGoogleOAuth, !Ref CognitoDomainPrefix, ""]
+          COGNITO_GOOGLE_ENABLED: !If [HasGoogleOAuth, "true", "false"]
           STATIC_BUCKET: !Ref StaticBucketName
           CLOUDFRONT_DISTRIBUTION_ID: !Ref CloudFrontDistributionId
       Events:
@@ -306,3 +513,13 @@ Outputs:
     Value: !Ref QualityFlagsTable
   TableRateLimits:
     Value: !Ref RateLimitsTable
+  CognitoUserPoolId:
+    Value: !Ref UserPool
+  CognitoUserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoOAuthDomain:
+    Condition: HasGoogleOAuth
+    Description: Cognito hosted UI domain prefix for OAuth (full host is {prefix}.auth.{region}.amazoncognito.com)
+    Value: !Ref CognitoDomainPrefix
+  SesDomainIdentityArn:
+    Value: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesDomain}"

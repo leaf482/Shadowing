@@ -20,23 +20,7 @@ const distanceInMiles = (from, to) => {
   return earthRadiusMiles * c;
 };
 
-function isLocked(clinic) {
-  if (!clinic?.lockExpiresAt) return false;
-  return new Date(clinic.lockExpiresAt) > new Date();
-}
-
-function isAvailableForRequest(clinic) {
-  return ["available", "mixed"].includes(clinic?.shadowingStatus) && !isLocked(clinic);
-}
-
-function formatLockExpires(lockExpiresAt) {
-  if (!lockExpiresAt) return "";
-  return new Date(lockExpiresAt).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
-}
+import { formatLockExpires, isAvailableForRequest, isLocked } from "../lib/clinicLocks.js";
 
 export default function ClinicsPage({
   clinics,

@@ -169,17 +169,17 @@ const CONTENT = {
     body: (
       <>
         <p>Shadow Network implements industry-standard security practices to protect user data and platform integrity.</p>
-        <h3>Authentication &amp; Passwords</h3>
+        <h3>Authentication</h3>
         <Ul items={[
-          "Passwords are hashed using scrypt — never stored in plain text.",
-          "All sessions use server-issued HttpOnly cookies (email/user IDs are never used as auth credentials).",
-          "Session cookies expire after 7 days and are invalidated on logout.",
-          "Login attempts are rate-limited: more than 10 failed attempts from a single IP within 10 minutes results in a temporary block.",
+          "Sign-in is handled by Amazon Cognito with university .edu email addresses only.",
+          "Passwords are stored and verified by AWS — never stored in plain text on our servers.",
+          "The app uses short-lived Cognito tokens; sign out clears tokens from your browser.",
+          "Only verified .edu accounts can register (enforced at sign-up).",
         ]} />
         <h3>Data Transmission</h3>
         <Ul items={[
           "All traffic is served over HTTPS (TLS encryption).",
-          "Authenticated API requests rely on secure server-side session cookies over encrypted connections.",
+          "Authenticated API requests send a Cognito ID token over encrypted connections.",
         ]} />
         <h3>Input Validation</h3>
         <Ul items={[
@@ -196,7 +196,7 @@ const CONTENT = {
         <h3>Access Control</h3>
         <Ul items={[
           "Only authenticated users with verified .edu emails may access the platform.",
-          "Write operations (adding/editing clinics, logging hours) require a valid authenticated session cookie.",
+          "Write operations (adding/editing clinics, logging hours) require a valid signed-in Cognito session.",
           "Administrative actions are restricted to platform maintainers.",
         ]} />
       </>
