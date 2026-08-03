@@ -47,6 +47,6 @@
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^8.2.2",
     "sharp": "^0.34.5",
-    "vite": "^6.4.2"
+    "vite": "^8.0.13"
   }
 }
